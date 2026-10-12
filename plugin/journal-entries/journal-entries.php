@@ -18,6 +18,9 @@ defined( 'JOURNAL_ENTRIES_CATEGORY_SLUG' ) || define( 'JOURNAL_ENTRIES_CATEGORY_
 const JOURNAL_ENTRIES_VERSION   = '1.0.0';
 const JOURNAL_ENTRIES_NAMESPACE = 'journal/v1';
 
+// How long a request waits for another request appending to the same day.
+const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
+
 register_activation_hook( __FILE__, 'journal_entries_category' );
 add_action( 'rest_api_init', 'journal_entries_register_routes' );
 
@@ -367,6 +370,8 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		return $result;
 	}
 
+	add_post_meta( $post_id, '_journal_entry_id', $entry['id'] );
+
 	return $post_id;
 }
 
@@ -388,11 +393,70 @@ function journal_entries_handle_entry( WP_REST_Request $request ) {
 		return $entry;
 	}
 
+	$existing = journal_entries_find_entry_post( $entry['id'] );
+	if ( $existing ) {
+		return journal_entries_duplicate_response( $existing );
+	}
+
+	if ( ! journal_entries_lock( $entry['day'] ) ) {
+		return journal_entries_error( 'journal_busy', 'Another entry for this day is being stored. Try again.', 503 );
+	}
 	$fallback = null;
-	$post_id  = journal_entries_store_entry( $entry, $fallback );
+	try {
+		// The same entry may have been stored by another request while this one waited for the lock.
+		$existing = journal_entries_find_entry_post( $entry['id'] );
+		if ( $existing ) {
+			return journal_entries_duplicate_response( $existing );
+		}
+		$post_id = journal_entries_store_entry( $entry, $fallback );
+	} finally {
+		journal_entries_unlock( $entry['day'] );
+	}
+
 	if ( is_wp_error( $post_id ) ) {
 		return journal_entries_error( 'journal_failure', $post_id->get_error_message(), 500 );
 	}
 
 	return journal_entries_created_response( $post_id, $fallback );
+}
+
+/** Returns the id of the post an entry was stored in, or 0 if it never was. */
+function journal_entries_find_entry_post( string $id ): int {
+	$ids = get_posts(
+		array(
+			'post_type'     => 'post',
+			'post_status'   => 'any',
+			'meta_key'      => '_journal_entry_id',
+			'meta_value'    => $id,
+			'numberposts'   => 1,
+			'fields'        => 'ids',
+			// Asked twice per request, before and after waiting for the lock; the second answer must be fresh.
+			'cache_results' => false,
+		)
+	);
+	return $ids ? (int) $ids[0] : 0;
+}
+
+/** Takes the database lock for a day. Returns false if another request holds it for too long. */
+function journal_entries_lock( string $day ): bool {
+	global $wpdb;
+	$taken = $wpdb->get_var(
+		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $wpdb->prefix . 'journal_' . $day, JOURNAL_ENTRIES_LOCK_SECONDS )
+	);
+	return '1' === (string) $taken;
+}
+
+function journal_entries_unlock( string $day ): void {
+	global $wpdb;
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $wpdb->prefix . 'journal_' . $day ) );
+}
+
+function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
+	return new WP_REST_Response(
+		array(
+			'status'  => 'duplicate',
+			'post_id' => $post_id,
+		),
+		200
+	);
 }
