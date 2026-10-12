@@ -457,18 +457,18 @@ function journal_entries_find_entry_post( string $id ): int {
 	return $ids ? (int) $ids[0] : 0;
 }
 
-/** Takes the database lock for a day. Returns false if another request holds it for too long. */
-function journal_entries_lock( string $day ): bool {
+/** Takes the database lock for a day or a photo id. Returns false if another request holds it for too long. */
+function journal_entries_lock( string $name ): bool {
 	global $wpdb;
 	$taken = $wpdb->get_var(
-		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $wpdb->prefix . 'journal_' . $day, JOURNAL_ENTRIES_LOCK_SECONDS )
+		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $wpdb->prefix . 'journal_' . $name, JOURNAL_ENTRIES_LOCK_SECONDS )
 	);
 	return '1' === (string) $taken;
 }
 
-function journal_entries_unlock( string $day ): void {
+function journal_entries_unlock( string $name ): void {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $wpdb->prefix . 'journal_' . $day ) );
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $wpdb->prefix . 'journal_' . $name ) );
 }
 
 function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
@@ -581,36 +581,74 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 		return journal_entries_error( 'missing_photo', 'The photo did not arrive complete.', 400 );
 	}
 
+	// The handler decides what is a photo from the file's own bytes, never from its name or claimed type.
+	$types    = array(
+		'image/jpeg' => 'jpg',
+		'image/png'  => 'png',
+		'image/webp' => 'webp',
+	);
+	$detected = wp_get_image_mime( $files['photo']['tmp_name'] );
+	if ( ! $detected || ! isset( $types[ $detected ] ) || ! in_array( $detected, get_allowed_mime_types(), true ) ) {
+		return journal_entries_error( 'invalid_photo', 'The file is not a JPEG, PNG or WebP photo.', 400 );
+	}
+
 	require_once ABSPATH . 'wp-admin/includes/file.php';
 	require_once ABSPATH . 'wp-admin/includes/image.php';
 	require_once ABSPATH . 'wp-admin/includes/media.php';
 
-	add_filter( 'upload_dir', 'journal_entries_upload_dir' );
-	$attachment_id = media_handle_upload(
-		'photo',
-		0,
-		array(
-			'post_title'  => 'Journal photo',
-			// Private for good: WordPress lists ordinary unattached media to anonymous visitors.
-			'post_status' => 'private',
-		),
-		array(
-			'test_form'                => false,
-			'mimes'                    => array(
-				'jpg|jpeg|jpe' => 'image/jpeg',
-				'png'          => 'image/png',
-				'webp'         => 'image/webp',
-			),
-			'unique_filename_callback' => 'journal_entries_random_filename',
-		)
-	);
-	remove_filter( 'upload_dir', 'journal_entries_upload_dir' );
+	if ( ! journal_entries_lock( $id ) ) {
+		return journal_entries_error( 'journal_busy', 'This photo is being stored. Try again.', 503 );
+	}
+	try {
+		// The same photo may have been stored by another request while this one waited for the lock.
+		$existing = journal_entries_find_photo( $id );
+		if ( $existing ) {
+			return new WP_REST_Response(
+				array(
+					'status'        => 'duplicate',
+					'attachment_id' => $existing,
+				),
+				200
+			);
+		}
 
-	if ( is_wp_error( $attachment_id ) ) {
-		return journal_entries_error( 'invalid_photo', $attachment_id->get_error_message(), 400 );
+		// The stored extension follows the detected type, whatever name the client sent.
+		$_FILES['photo']['name'] = 'photo.' . $types[ $detected ];
+
+		add_filter( 'upload_dir', 'journal_entries_upload_dir' );
+		try {
+			$attachment_id = media_handle_upload(
+				'photo',
+				0,
+				array(
+					'post_title'  => 'Journal photo',
+					// Private for good: WordPress lists ordinary unattached media to anonymous visitors.
+					'post_status' => 'private',
+					// Written with the attachment, so a retry finds it even if the request dies while sizing the image.
+					'meta_input'  => array( '_journal_photo_id' => $id ),
+				),
+				array(
+					'test_form'                => false,
+					'mimes'                    => array(
+						'jpg|jpeg|jpe' => 'image/jpeg',
+						'png'          => 'image/png',
+						'webp'         => 'image/webp',
+					),
+					'unique_filename_callback' => 'journal_entries_random_filename',
+				)
+			);
+		} finally {
+			remove_filter( 'upload_dir', 'journal_entries_upload_dir' );
+		}
+	} finally {
+		journal_entries_unlock( $id );
 	}
 
-	add_post_meta( $attachment_id, '_journal_photo_id', $id, true );
+	if ( is_wp_error( $attachment_id ) ) {
+		// The file was checked above, so what failed is the server's side of the store.
+		return journal_entries_error( 'journal_failure', 'The photo could not be stored.', 500 );
+	}
+
 	journal_entries_protect_dirs( dirname( get_attached_file( $attachment_id ) ) );
 
 	return new WP_REST_Response(

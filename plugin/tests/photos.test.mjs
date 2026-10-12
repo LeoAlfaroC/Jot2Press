@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { api, BASE, fixture, readMedia, uploadPhoto, uuid } from './helpers.mjs';
+import { api, BASE, fixture, pluginDir, readMedia, uploadPhoto, uuid, wp } from './helpers.mjs';
 
 const storedPath = ( extension ) =>
 	new RegExp( `^/wp-content/uploads/journal/\\d{4}/\\d{2}/[0-9a-f]{32}\\.${ extension }$` );
@@ -62,7 +63,55 @@ test( 'files that are not JPEG, PNG or WebP are rejected', async () => {
 		const { status, body } = await uploadPhoto( options );
 		assert.equal( status, 400, JSON.stringify( options ) );
 		assert.equal( body.code, 'invalid_photo' );
+		assert.equal( body.message, 'The file is not a JPEG, PNG or WebP photo.' );
 	}
+} );
+
+test( 'a PNG sent under a .jpg name is stored as a PNG', async () => {
+	const { status, body } = await uploadPhoto( { file: 'photo.png', name: 'photo.jpg' } );
+	assert.equal( status, 201 );
+	const media = await readMedia( body.attachment_id );
+	assert.equal( media.mime_type, 'image/png' );
+	assert.match( new URL( media.source_url ).pathname, storedPath( 'png' ) );
+} );
+
+test( 'an upload waits its turn while the same photo id is being stored', async () => {
+	const id = uuid();
+	// Hold the photo id's lock from a separate database connection for 9 seconds.
+	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('{$wpdb->prefix}journal_${ id }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
+	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
+	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
+	try {
+		await new Promise( ( resolve, reject ) => {
+			const timer = setTimeout( () => reject( new Error( 'The lock holder never reported LOCKED.' ) ), 30000 );
+			holder.stdout.on( 'data', ( chunk ) => {
+				if ( chunk.toString().includes( 'LOCKED' ) ) {
+					clearTimeout( timer );
+					resolve();
+				}
+			} );
+		} );
+
+		const blocked = await uploadPhoto( { id } );
+		assert.equal( blocked.status, 503 );
+		assert.equal( blocked.body.code, 'journal_busy' );
+
+		await released;
+		const retried = await uploadPhoto( { id } );
+		assert.equal( retried.status, 201 );
+	} finally {
+		holder.kill();
+	}
+} );
+
+test( 'the same photo sent twice at once is stored once', async () => {
+	const id = uuid();
+	const responses = await Promise.all( [ uploadPhoto( { id } ), uploadPhoto( { id } ) ] );
+	assert.deepEqual( responses.map( ( response ) => response.status ).sort(), [ 200, 201 ] );
+	assert.equal( responses[ 0 ].body.attachment_id, responses[ 1 ].body.attachment_id );
+
+	const count = wp( 'post', 'list', '--post_type=attachment', '--post_status=any', '--meta_key=_journal_photo_id', `--meta_value=${ id }`, '--format=count' );
+	assert.equal( count.trim(), '1' );
 } );
 
 test( 'a request without a file or with a bad id is rejected', async () => {
@@ -109,4 +158,26 @@ test( 'the journal upload folders cannot be listed', async () => {
 		assert.equal( response.status, 200, folder );
 		assert.equal( await response.text(), '', folder );
 	}
+} );
+
+test( 'a photo the server cannot store is answered as a server failure', async () => {
+	// Inside the test site: hand the handler a real JPEG that PHP did not receive as an upload, which WordPress refuses to move.
+	const bytes = fixture( 'photo.jpg' ).toString( 'base64' );
+	const php = `
+		$tmp = wp_tempnam( 'journal-test' );
+		file_put_contents( $tmp, base64_decode( '${ bytes }' ) );
+		$_FILES['photo'] = array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => $tmp, 'error' => 0, 'size' => filesize( $tmp ) );
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$request = new WP_REST_Request( 'POST', '/journal/v1/photos' );
+		$request->set_body_params( array( 'id' => '${ uuid() }' ) );
+		$request->set_file_params( $_FILES );
+		$response = rest_do_request( $request );
+		echo 'RESULT:' . wp_json_encode( array( $response->get_status(), $response->get_data() ) ) . ':END';
+		unlink( $tmp );
+	`;
+	const output = wp( 'eval', php );
+	const [ status, body ] = JSON.parse( output.match( /RESULT:(.*):END/s )[ 1 ] );
+	assert.equal( status, 500 );
+	assert.equal( body.code, 'journal_failure' );
+	assert.equal( body.message, 'The photo could not be stored.' );
 } );
