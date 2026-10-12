@@ -5,6 +5,8 @@
   "scripts": {
     "env:start": "wp-env start",
     "env:stop": "wp-env stop",
+    "apply-name": "node apply-name.mjs",
+    "build": "node apply-name.mjs && rm -f journal-entries.zip && zip -r journal-entries.zip journal-entries",
     "test": "node tests/setup.mjs && node --test --test-concurrency=1 \"tests/**/*.test.mjs\""
   },
   "devDependencies": {
