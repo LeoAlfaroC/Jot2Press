@@ -65,3 +65,14 @@ export function dayAllocator( block ) {
 export function at( day, time, offset = '-05:00' ) {
 	return `${ day }T${ time }${ offset }`;
 }
+
+/** Posts an entry. `fields` is the JSON body; `options` are api() options such as { who }. */
+export function sendEntry( fields, options = {} ) {
+	return api( 'POST', '/journal/v1/entries', { json: fields, ...options } );
+}
+
+/** Reads a post as its author sees it: raw title, raw content, status, slug, date, categories. */
+export async function readPost( id ) {
+	const { body } = await api( 'GET', `/wp/v2/posts/${ id }`, { query: '&context=edit' } );
+	return body;
+}
