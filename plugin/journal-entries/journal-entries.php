@@ -24,8 +24,15 @@ const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 // The most photos one entry can show.
 const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
 
+// Uploaded photos that no entry ever used are deleted after this many days.
+// To change it, define this constant in wp-config.php.
+defined( 'JOURNAL_ENTRIES_ORPHAN_DAYS' ) || define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );
+
 register_activation_hook( __FILE__, 'journal_entries_category' );
 add_action( 'rest_api_init', 'journal_entries_register_routes' );
+register_deactivation_hook( __FILE__, 'journal_entries_deactivate' );
+add_action( 'init', 'journal_entries_schedule_cleanup' );
+add_action( 'journal_entries_cleanup', 'journal_entries_cleanup_orphans' );
 
 function journal_entries_error( string $code, string $message, int $status ): WP_Error {
 	return new WP_Error( $code, $message, array( 'status' => $status ) );
@@ -737,4 +744,38 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 		),
 		201
 	);
+}
+
+function journal_entries_schedule_cleanup(): void {
+	if ( ! wp_next_scheduled( 'journal_entries_cleanup' ) ) {
+		wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'journal_entries_cleanup' );
+	}
+}
+
+function journal_entries_deactivate(): void {
+	wp_clear_scheduled_hook( 'journal_entries_cleanup' );
+}
+
+/**
+ * Deletes journal photos that have stayed unattached for too long: uploads whose entry
+ * never arrived, and photos of a day's post that was deleted permanently.
+ */
+function journal_entries_cleanup_orphans(): void {
+	$orphans = get_posts(
+		array(
+			'post_type'     => 'attachment',
+			'post_status'   => array( 'private', 'inherit' ),
+			'post_parent'   => 0,
+			'meta_key'      => '_journal_photo_id',
+			'date_query'    => array(
+				array( 'before' => JOURNAL_ENTRIES_ORPHAN_DAYS . ' days ago' ),
+			),
+			'numberposts'   => -1,
+			'fields'        => 'ids',
+			'cache_results' => false,
+		)
+	);
+	foreach ( $orphans as $attachment_id ) {
+		wp_delete_attachment( $attachment_id, true );
+	}
 }

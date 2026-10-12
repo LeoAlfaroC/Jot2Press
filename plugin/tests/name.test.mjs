@@ -42,3 +42,9 @@ test( 'the plugin header carries the name in project.json', () => {
 	const { pluginName } = readNames();
 	assert.ok( readFileSync( pluginFile, 'utf8' ).includes( `\n * Plugin Name:       ${ pluginName }\n` ) );
 } );
+
+test( 'the README heading carries the name in project.json', () => {
+	const { pluginName } = readNames();
+	const readme = readFileSync( new URL( '../README.md', import.meta.url ), 'utf8' );
+	assert.ok( readme.startsWith( `# ${ pluginName }\n` ) );
+} );
