@@ -76,3 +76,29 @@ export async function readPost( id ) {
 	const { body } = await api( 'GET', `/wp/v2/posts/${ id }`, { query: '&context=edit' } );
 	return body;
 }
+
+/** Returns the bytes of a file in tests/fixtures. */
+export function fixture( name ) {
+	return readFileSync( new URL( `./fixtures/${ name }`, import.meta.url ) );
+}
+
+const MIME_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
+
+/**
+ * Uploads a fixture through the photos endpoint.
+ * `file` is the fixture to send, `name` the filename the request claims, `type` its claimed MIME type.
+ */
+export async function uploadPhoto( { id = uuid(), file = 'photo.jpg', name = file, type, who = 'admin' } = {} ) {
+	const form = new FormData();
+	form.set( 'id', id );
+	const mime = type ?? MIME_TYPES[ name.split( '.' ).pop().toLowerCase() ] ?? 'application/octet-stream';
+	form.set( 'photo', new Blob( [ fixture( file ) ], { type: mime } ), name );
+	const { status, body } = await api( 'POST', '/journal/v1/photos', { form, who } );
+	return { id, status, body };
+}
+
+/** Reads an attachment as its owner sees it: status, parent post, source_url, mime_type. */
+export async function readMedia( attachmentId ) {
+	const { body } = await api( 'GET', `/wp/v2/media/${ attachmentId }`, { query: '&context=edit' } );
+	return body;
+}

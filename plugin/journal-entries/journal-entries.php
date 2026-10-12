@@ -69,6 +69,16 @@ function journal_entries_register_routes(): void {
 			'permission_callback' => 'journal_entries_can_publish',
 		)
 	);
+
+	register_rest_route(
+		JOURNAL_ENTRIES_NAMESPACE,
+		'/photos',
+		array(
+			'methods'             => WP_REST_Server::CREATABLE,
+			'callback'            => 'journal_entries_handle_photo',
+			'permission_callback' => 'journal_entries_can_publish',
+		)
+	);
 }
 
 /** Describes a category the way the app shows it: its slug and its readable name. */
@@ -489,4 +499,125 @@ function journal_entries_recover_entry( array $entry ): int {
 	}
 	add_post_meta( $post_id, '_journal_entry_id', $entry['id'] );
 	return $post_id;
+}
+
+/** Returns the attachment id of an uploaded journal photo, or 0 if the id is unknown. */
+function journal_entries_find_photo( string $id ): int {
+	$ids = get_posts(
+		array(
+			'post_type'     => 'attachment',
+			'post_status'   => array( 'private', 'inherit' ),
+			'meta_key'      => '_journal_photo_id',
+			'meta_value'    => $id,
+			'numberposts'   => 1,
+			'fields'        => 'ids',
+			'cache_results' => false,
+		)
+	);
+	return $ids ? (int) $ids[0] : 0;
+}
+
+/** Sends journal photos to uploads/journal/YYYY/MM, apart from the blog's other media. */
+function journal_entries_upload_dir( array $dirs ): array {
+	$subdir         = '/journal/' . current_time( 'Y/m' );
+	$dirs['subdir'] = $subdir;
+	$dirs['path']   = $dirs['basedir'] . $subdir;
+	$dirs['url']    = $dirs['baseurl'] . $subdir;
+	return $dirs;
+}
+
+/** Replaces the uploaded filename with one that cannot be guessed. */
+function journal_entries_random_filename( string $dir, string $name, string $ext ): string {
+	return bin2hex( random_bytes( 16 ) ) . strtolower( $ext );
+}
+
+/** Puts an empty index.html in a journal folder and in each of its parents up to uploads/journal. */
+function journal_entries_protect_dirs( string $dir ): void {
+	$root = trailingslashit( wp_get_upload_dir()['basedir'] ) . 'journal';
+	while ( 0 === strpos( $dir, $root ) ) {
+		$index = $dir . '/index.html';
+		if ( ! file_exists( $index ) ) {
+			file_put_contents( $index, '' );
+		}
+		if ( $dir === $root ) {
+			break;
+		}
+		$dir = dirname( $dir );
+	}
+}
+
+function journal_entries_handle_photo( WP_REST_Request $request ) {
+	// A body larger than PHP's post_max_size arrives with no fields and no files at all.
+	if ( empty( $_POST ) && empty( $_FILES ) && (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 ) > 0 ) {
+		return journal_entries_error( 'photo_too_large', 'The upload exceeds the server limit.', 413 );
+	}
+
+	$id = $request->get_param( 'id' );
+	$id = is_string( $id ) ? strtolower( $id ) : '';
+	if ( ! wp_is_uuid( $id ) ) {
+		return journal_entries_error( 'invalid_id', 'id must be a UUID.', 400 );
+	}
+
+	$existing = journal_entries_find_photo( $id );
+	if ( $existing ) {
+		return new WP_REST_Response(
+			array(
+				'status'        => 'duplicate',
+				'attachment_id' => $existing,
+			),
+			200
+		);
+	}
+
+	$files = $request->get_file_params();
+	if ( empty( $files['photo'] ) ) {
+		return journal_entries_error( 'missing_photo', 'A photo file is required.', 400 );
+	}
+	$upload_error = (int) $files['photo']['error'];
+	if ( UPLOAD_ERR_INI_SIZE === $upload_error || UPLOAD_ERR_FORM_SIZE === $upload_error ) {
+		return journal_entries_error( 'photo_too_large', 'The photo exceeds the server limit.', 413 );
+	}
+	if ( UPLOAD_ERR_OK !== $upload_error ) {
+		return journal_entries_error( 'missing_photo', 'The photo did not arrive complete.', 400 );
+	}
+
+	require_once ABSPATH . 'wp-admin/includes/file.php';
+	require_once ABSPATH . 'wp-admin/includes/image.php';
+	require_once ABSPATH . 'wp-admin/includes/media.php';
+
+	add_filter( 'upload_dir', 'journal_entries_upload_dir' );
+	$attachment_id = media_handle_upload(
+		'photo',
+		0,
+		array(
+			'post_title'  => 'Journal photo',
+			// Private for good: WordPress lists ordinary unattached media to anonymous visitors.
+			'post_status' => 'private',
+		),
+		array(
+			'test_form'                => false,
+			'mimes'                    => array(
+				'jpg|jpeg|jpe' => 'image/jpeg',
+				'png'          => 'image/png',
+				'webp'         => 'image/webp',
+			),
+			'unique_filename_callback' => 'journal_entries_random_filename',
+		)
+	);
+	remove_filter( 'upload_dir', 'journal_entries_upload_dir' );
+
+	if ( is_wp_error( $attachment_id ) ) {
+		return journal_entries_error( 'invalid_photo', $attachment_id->get_error_message(), 400 );
+	}
+
+	add_post_meta( $attachment_id, '_journal_photo_id', $id, true );
+	journal_entries_protect_dirs( dirname( get_attached_file( $attachment_id ) ) );
+
+	return new WP_REST_Response(
+		array(
+			'status'        => 'created',
+			'attachment_id' => $attachment_id,
+		),
+		201
+	);
 }
