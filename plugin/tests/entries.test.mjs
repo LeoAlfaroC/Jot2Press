@@ -108,6 +108,41 @@ test( 'text is stored exactly as typed', async () => {
 	);
 } );
 
+/** Strips the tags of a rendered fragment and decodes its entities once, as a browser would show the text. */
+function shownText( html ) {
+	const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+	return html
+		.replace( /<[^>]*>/g, '' )
+		.replace( /&(?:#(\d+)|#x([0-9a-f]+)|(\w+));/gi, ( match, dec, hex, name ) => {
+			if ( dec ) {
+				return String.fromCodePoint( Number( dec ) );
+			}
+			if ( hex ) {
+				return String.fromCodePoint( parseInt( hex, 16 ) );
+			}
+			return named[ name ] ?? match;
+		} );
+}
+
+test( 'entities, tags and shortcode brackets are shown as typed', async () => {
+	const d = day();
+	const typed = 'Tom &amp; Jerry &lt;b&gt; &nbsp; <b>bold</b>';
+	const quoted = '"quoted" \'single\'';
+	const brackets = 'see [gallery] and [caption]x[/caption]';
+	const id = uuid();
+	const { body } = await sendEntry( { id, written_at: at( d, '10:30:00' ), text: `${ typed } ${ quoted } ${ brackets }` } );
+	const { body: post } = await api( 'GET', `/wp/v2/posts/${ body.post_id }`, { query: '&context=edit' } );
+
+	assert.ok( post.content.raw.includes( 'Tom &amp;amp; Jerry &amp;lt;b&amp;gt; &amp;nbsp; &lt;b&gt;bold&lt;/b&gt;' ), post.content.raw );
+	assert.ok( post.content.raw.includes( 'see &#91;gallery&#93; and &#91;caption&#93;x&#91;/caption&#93;' ), post.content.raw );
+
+	// WordPress curls quotes when it displays the text, so the quotes are checked in content.raw only.
+	assert.ok( post.content.raw.includes( '&quot;quoted&quot; &#039;single&#039;' ), post.content.raw );
+	const shown = shownText( post.content.rendered );
+	assert.ok( shown.includes( typed ), shown );
+	assert.ok( shown.includes( brackets ), shown );
+} );
+
 test( 'surrounding whitespace is trimmed from the text', async () => {
 	const d = day();
 	const id = uuid();

@@ -372,7 +372,11 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
 		$line .= journal_entries_render_location( $location );
 	}
 	if ( '' !== $text ) {
-		$line .= ' — ' . str_replace( array( "\r\n", "\r", "\n" ), '<br>', esc_html( $text ) );
+		// Not esc_html(), which leaves existing entities alone ("&amp;" would show as "&"). The brackets are escaped
+		// so that WordPress does not run "[gallery]" and the like as shortcodes. Invalid UTF-8 is replaced, not dropped.
+		$safe  = htmlspecialchars( $text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8' );
+		$safe  = str_replace( array( '[', ']' ), array( '&#91;', '&#93;' ), $safe );
+		$line .= ' — ' . str_replace( array( "\r\n", "\r", "\n" ), '<br>', $safe );
 	}
 	$marker = journal_entries_marker( $id );
 	$blocks = array( "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->" );
