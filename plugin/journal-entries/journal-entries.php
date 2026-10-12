@@ -21,6 +21,9 @@ const JOURNAL_ENTRIES_NAMESPACE = 'journal/v1';
 // How long a request waits for another request appending to the same day.
 const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 
+// The most photos one entry can show.
+const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
+
 register_activation_hook( __FILE__, 'journal_entries_category' );
 add_action( 'rest_api_init', 'journal_entries_register_routes' );
 
@@ -166,7 +169,7 @@ function journal_entries_parse_location( $value ) {
 /**
  * Checks the shape of an entry request.
  *
- * @return array|WP_Error Keys: id, written, day, text, title, category, post_status, location.
+ * @return array|WP_Error Keys: id, written, day, text, title, category, post_status, location, photo_ids.
  */
 function journal_entries_validate_entry( WP_REST_Request $request ) {
 	$id = $request->get_param( 'id' );
@@ -210,7 +213,23 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 		return $location;
 	}
 
-	if ( '' === $text ) {
+	$photo_ids = $request->get_param( 'photo_ids' );
+	$photo_ids = null === $photo_ids ? array() : $photo_ids;
+	if ( ! is_array( $photo_ids ) ) {
+		return journal_entries_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
+	}
+	if ( count( $photo_ids ) > JOURNAL_ENTRIES_MAX_PHOTOS ) {
+		return journal_entries_error( 'too_many_photos', 'An entry can have at most 10 photos.', 400 );
+	}
+	foreach ( $photo_ids as $index => $photo_id ) {
+		$photo_id = is_string( $photo_id ) ? strtolower( $photo_id ) : '';
+		if ( ! wp_is_uuid( $photo_id ) ) {
+			return journal_entries_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
+		}
+		$photo_ids[ $index ] = $photo_id;
+	}
+
+	if ( '' === $text && ! $photo_ids ) {
 		return journal_entries_error( 'empty_entry', 'An entry needs text or photos.', 400 );
 	}
 
@@ -223,6 +242,7 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 		'category'    => null === $category ? null : trim( $category ),
 		'post_status' => $post_status,
 		'location'    => $location,
+		'photo_ids'   => array_values( $photo_ids ),
 	);
 }
 
@@ -318,8 +338,8 @@ function journal_entries_marker( string $id ): string {
 	return 'journal-entry-' . $id;
 }
 
-/** Builds the block markup for one entry: the time, the place when known, then the text. */
-function journal_entries_render( string $id, DateTimeImmutable $written, string $text, ?array $location ): string {
+/** Builds the block markup for one entry: a paragraph with the time, place and text, then one image per photo. */
+function journal_entries_render( string $id, DateTimeImmutable $written, string $text, ?array $location, array $attachment_ids ): string {
 	$line = '<strong>' . $written->format( 'H:i' ) . '</strong>';
 	if ( null !== $location ) {
 		$line .= journal_entries_render_location( $location );
@@ -328,7 +348,19 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
 		$line .= ' — ' . str_replace( array( "\r\n", "\r", "\n" ), '<br>', esc_html( $text ) );
 	}
 	$marker = journal_entries_marker( $id );
-	return "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->";
+	$blocks = array( "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->" );
+
+	foreach ( $attachment_ids as $attachment_id ) {
+		$blocks[] = sprintf(
+			"<!-- wp:image {\"id\":%1\$d,\"sizeSlug\":\"large\",\"linkDestination\":\"none\"} -->\n" .
+			"<figure class=\"wp-block-image size-large\"><img src=\"%2\$s\" alt=\"\" class=\"wp-image-%1\$d\"/></figure>\n" .
+			'<!-- /wp:image -->',
+			$attachment_id,
+			esc_url( wp_get_attachment_image_url( $attachment_id, 'large' ) )
+		);
+	}
+
+	return implode( "\n\n", $blocks );
 }
 
 /**
@@ -381,7 +413,20 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		}
 	}
 
-	$result = journal_entries_append( $post_id, journal_entries_render( $entry['id'], $entry['written'], $entry['text'], $entry['location'] ) );
+	// Attached before the text is written: an entry whose text is in the post always has its photos attached.
+	foreach ( $entry['attachments'] as $attachment_id ) {
+		wp_update_post(
+			array(
+				'ID'          => $attachment_id,
+				'post_parent' => $post_id,
+			)
+		);
+	}
+
+	$result = journal_entries_append(
+		$post_id,
+		journal_entries_render( $entry['id'], $entry['written'], $entry['text'], $entry['location'], $entry['attachments'] )
+	);
 	if ( is_wp_error( $result ) ) {
 		return $result;
 	}
@@ -413,6 +458,13 @@ function journal_entries_handle_entry( WP_REST_Request $request ) {
 	if ( $existing ) {
 		return journal_entries_duplicate_response( $existing );
 	}
+
+	// Checked after the duplicate lookup: a retried entry answers 200 even if its photos were since cleaned up.
+	$attachments = journal_entries_resolve_photos( $entry['photo_ids'] );
+	if ( is_wp_error( $attachments ) ) {
+		return $attachments;
+	}
+	$entry['attachments'] = $attachments;
 
 	if ( ! journal_entries_lock( $entry['day'] ) ) {
 		return journal_entries_error( 'journal_busy', 'Another entry for this day is being stored. Try again.', 503 );
@@ -499,6 +551,23 @@ function journal_entries_recover_entry( array $entry ): int {
 	}
 	add_post_meta( $post_id, '_journal_entry_id', $entry['id'] );
 	return $post_id;
+}
+
+/**
+ * Turns photo ids into attachment ids, keeping their order.
+ *
+ * @return int[]|WP_Error
+ */
+function journal_entries_resolve_photos( array $photo_ids ) {
+	$attachment_ids = array();
+	foreach ( $photo_ids as $photo_id ) {
+		$attachment_id = journal_entries_find_photo( $photo_id );
+		if ( ! $attachment_id ) {
+			return journal_entries_error( 'unknown_photo', 'Photo ' . $photo_id . ' has not been uploaded.', 400 );
+		}
+		$attachment_ids[] = $attachment_id;
+	}
+	return $attachment_ids;
 }
 
 /** Returns the attachment id of an uploaded journal photo, or 0 if the id is unknown. */
