@@ -21,12 +21,12 @@ Two values can be changed by defining a constant in `wp-config.php`, above the l
 
 ```php
 define( 'JOURNAL_ENTRIES_CATEGORY_SLUG', 'journal' ); // default category of the day posts
-define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted; 0 turns the cleanup off
+define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted; anything but 1 to 999999 turns it off
 ```
 
 Values set there survive plugin updates.
 
-Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (a whole number of at least 1: `0`, `false` or anything that is not a whole number of days turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
+Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (a whole number of days from 1 to 999999; anything else, including `0`, `false`, text and a decimal such as `30.0`, turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
 
 The category and the status of the day posts are chosen in the app, not here. The app sends them with each entry and the plugin uses them when that entry creates the day's post; it never changes a post that already exists. If the app names a category that no longer exists, the post goes to the default category and the response says so.
 

@@ -25,7 +25,8 @@ const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
 
 // Journal photos that no post shows and that are attached to no post are deleted once they are older than this many
-// days. Only a whole number of days of at least 1 turns the cleanup on: 0, false or anything else turns it off.
+// days. Only a whole number of days from 1 to 999999 turns the cleanup on: anything else, including 0, false, text
+// and a decimal such as 30.0, turns it off.
 // To change it, define this constant in wp-config.php.
 defined( 'JOURNAL_ENTRIES_ORPHAN_DAYS' ) || define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );
 
@@ -791,7 +792,7 @@ function journal_entries_photo_is_shown( int $attachment_id ): bool {
 
 /**
  * The number of days after which an unused photo is deleted: JOURNAL_ENTRIES_ORPHAN_DAYS (or the value given)
- * when it is an integer, or a string of digits only, of at least 1. Anything else returns 0, which turns the
+ * when it is a whole number from 1 to 999999, as an integer or a string of digits only. Anything else returns 0, which turns the
  * cleanup off: a value that is not understood must never shorten the time a photo is kept.
  *
  * @param mixed $value The value to judge.
@@ -800,7 +801,7 @@ function journal_entries_orphan_days( $value = JOURNAL_ENTRIES_ORPHAN_DAYS ): in
 	if ( is_string( $value ) && preg_match( '/^\d{1,6}$/', $value ) ) {
 		$value = (int) $value;
 	}
-	return is_int( $value ) && $value >= 1 ? $value : 0;
+	return is_int( $value ) && $value >= 1 && $value <= 999999 ? $value : 0;
 }
 
 /**

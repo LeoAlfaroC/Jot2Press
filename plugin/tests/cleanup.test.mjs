@@ -126,8 +126,8 @@ test( "a photo that is a post's featured image is kept", async () => {
 test( 'the cleanup deletes nothing when the number of days is not a whole number of at least 1', () => {
 	const output = wp(
 		'eval',
-		`$out = array(); foreach ( array( 30, "30", 1, 0, -5, false, null, "", "off", 0.5, 30.5, "30d", "7 weeks" ) as $value ) { $out[] = journal_entries_orphan_days( $value ); } echo "RESULT:" . wp_json_encode( $out );`
+		`$out = array(); foreach ( array( 30, "30", 1, 999999, "999999", 0, -5, false, null, "", "off", 0.5, 30.5, 30.0, "30d", "7 weeks", 1000000, "1000000", 20270101000000, PHP_INT_MAX ) as $value ) { $out[] = journal_entries_orphan_days( $value ); } echo "RESULT:" . wp_json_encode( $out );`
 	);
 	const result = JSON.parse( output.match( /RESULT:(\[.*?\])/ )[ 1 ] );
-	assert.deepEqual( result, [ 30, 30, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] );
+	assert.deepEqual( result, [ 30, 30, 1, 999999, 999999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] );
 } );
