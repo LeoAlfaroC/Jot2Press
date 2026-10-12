@@ -131,3 +131,42 @@ test( 'the cleanup deletes nothing when the number of days is not a whole number
 	const result = JSON.parse( output.match( /RESULT:(\[.*?\])/ )[ 1 ] );
 	assert.deepEqual( result, [ 30, 30, 1, 999999, 999999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] );
 } );
+
+/** Lists the files a photo has in its uploads folder: the attached one, the original and every size. */
+function filesOfPhoto( attachmentId ) {
+	const output = wp(
+		'eval',
+		`$file = get_attached_file( ${ Number( attachmentId ) } ); $stem = substr( basename( $file ), 0, 32 ); $dir = dirname( $file ); $names = array_map( 'basename', glob( $dir . '/' . $stem . '*' ) ); sort( $names ); echo 'RESULT:' . wp_json_encode( array( basename( $file ), $stem, $names ) );`
+	);
+	const [ attached, stem, names ] = JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] );
+	return { attached, stem, names };
+}
+
+test( 'the cleanup removes every file of a large photo: original, scaled copy and sizes', async () => {
+	const photo = await uploadPhoto( { file: 'photo-large.jpg' } );
+	const before = filesOfPhoto( photo.body.attachment_id );
+	assert.match( before.attached, /^[0-9a-f]{32}-scaled\.jpg$/ );
+	assert.ok( before.names.includes( `${ before.stem }.jpg` ), before.names.join() );
+	assert.ok( before.names.includes( `${ before.stem }-1024x768.jpg` ), before.names.join() );
+	assert.ok( before.names.length >= 4, before.names.join() );
+	backdate( photo.body.attachment_id );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
+	const output = wp( 'eval', `$u = wp_get_upload_dir(); echo 'RESULT:' . wp_json_encode( array_map( 'basename', glob( $u['basedir'] . '/journal/*/*/${ before.stem }*' ) ) );` );
+	assert.deepEqual( JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] ), [] );
+} );
+
+test( 'a large photo that a post shows is kept when it is attached to nothing', async () => {
+	const photo = await uploadPhoto( { file: 'photo-large.jpg' } );
+	await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ photo.id ] } );
+	// The post shows the -1024x768 file while the attachment's own file is the -scaled copy: the stem still matches.
+	assert.match( filesOfPhoto( photo.body.attachment_id ).attached, /-scaled\.jpg$/ );
+	backdate( photo.body.attachment_id );
+	wp( 'post', 'update', String( photo.body.attachment_id ), '--post_parent=0' );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 200 );
+} );

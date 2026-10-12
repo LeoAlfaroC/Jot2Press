@@ -241,3 +241,17 @@ test( 'an entry whose text was written but whose id row was not is recovered eve
 	assert.equal( second.status, 200 );
 	assert.deepEqual( second.body, { status: 'duplicate', post_id: first.body.post_id } );
 } );
+
+test( 'a photo wider than 2560 px is shown in its large size, not the original or the scaled copy', async () => {
+	const upload = await uploadPhoto( { file: 'photo-large.jpg' } );
+	assert.equal( upload.status, 201 );
+	// WordPress keeps the file it made from the upload as the attachment's own file.
+	assert.match( ( await readMedia( upload.body.attachment_id ) ).source_url, /-scaled\.jpg$/ );
+
+	const { status, body } = await sendEntry( { id: uuid(), written_at: at( day(), '12:00:00' ), photo_ids: [ upload.id ] } );
+	assert.equal( status, 201 );
+	const content = ( await readPost( body.post_id ) ).content.raw;
+	const src = content.match( /<img src="([^"]+)"/ )[ 1 ];
+	assert.match( src, /\/[0-9a-f]{32}-1024x768\.jpg$/ );
+	assert.ok( ! src.includes( 'scaled' ) );
+} );
