@@ -42,6 +42,8 @@ if ( leftovers.length ) {
 }
 
 tryWp( 'user', 'create', 'reader', 'reader@example.com', '--role=subscriber' );
+// A second account that can publish, to show that each account keeps its own journal.
+tryWp( 'user', 'create', 'author', 'author@example.com', '--role=author' );
 // Categories the tests rely on: one that entries are filed under, and one that no post ever uses.
 tryWp( 'term', 'create', 'category', 'Travel', '--slug=travel' );
 tryWp( 'term', 'create', 'category', 'Tea & Cake', '--slug=tea-cake' );
@@ -56,6 +58,7 @@ writeFileSync(
 			base: 'http://localhost:8888',
 			admin: { user: 'admin', password: applicationPassword( 'admin' ) },
 			reader: { user: 'reader', password: applicationPassword( 'reader' ) },
+			author: { user: 'author', password: applicationPassword( 'author' ) },
 			wrong: { user: 'admin', password: 'wrong-wrong-wrong-wrong' },
 		},
 		null,

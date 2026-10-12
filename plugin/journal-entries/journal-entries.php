@@ -255,12 +255,16 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 	);
 }
 
-/** Returns the id of the post for a day (YYYY-MM-DD), or 0. Trashed posts do not count. */
+/**
+ * Returns the id of the current user's post for a day (YYYY-MM-DD), or 0. Trashed posts do not count, and neither
+ * do other accounts' posts: each account keeps its own journal. (Entry ids are looked up site-wide, though.)
+ */
 function journal_entries_find_day_post( string $day ): int {
 	$ids = get_posts(
 		array(
 			'post_type'     => 'post',
 			'post_status'   => 'any',
+			'author'        => get_current_user_id(),
 			'meta_key'      => '_journal_date',
 			'meta_value'    => $day,
 			'orderby'       => 'ID',
