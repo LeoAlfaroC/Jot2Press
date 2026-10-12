@@ -21,12 +21,12 @@ Two values can be changed by defining a constant in `wp-config.php`, above the l
 
 ```php
 define( 'JOURNAL_ENTRIES_CATEGORY_SLUG', 'journal' ); // default category of the day posts
-define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted
+define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted; 0 turns the cleanup off
 ```
 
 Values set there survive plugin updates.
 
-Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (never fewer than 1). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
+Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (a whole number of at least 1: `0`, `false` or anything that is not a whole number of days turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
 
 The category and the status of the day posts are chosen in the app, not here. The app sends them with each entry and the plugin uses them when that entry creates the day's post; it never changes a post that already exists. If the app names a category that no longer exists, the post goes to the default category and the response says so.
 
@@ -82,7 +82,7 @@ Sending the same `id` again is safe: nothing is stored twice.
 - A day post created as `publish` is public from its first entry, and every later entry of that day is public the moment it arrives, with its photos and its location. WordPress announces the post when it is created: it enters the feeds, and plugins that email subscribers or share to social networks may send it out with only that first entry.
 - Photos are private attachments under random filenames in `wp-content/uploads/journal/`, whatever the status of their post. WordPress does not list them to visitors, but the file itself is served to anyone who has its exact URL, which is how a public post shows them.
 - When the app sends a location, the entry shows its coordinates and a Google Maps link. They are part of the post content; opening the link sends the coordinates to Google.
-- Once a day, journal photos that no post shows and that are attached to no post are deleted for good, once they are older than the number of days set above. That includes the photos of a day's post that was deleted permanently. A photo that any post, even one in the trash, still shows is kept, and nothing else in the media library is touched.
+- Once a day, journal photos that no post shows and that are attached to no post are deleted for good, once they are older than the number of days set above. That includes the photos of a day's post that was deleted permanently. A photo is kept when it is shown: its file appears in the content of any post, even one in the trash (which is how this plugin's entries, the block editor's image and gallery blocks, and the Jetpack app show a photo), or it is some post's featured image. A photo referenced only by its id in a `[gallery]` shortcode is not recognised as shown. Nothing else in the media library is touched.
 
 ## Tests
 

@@ -25,7 +25,7 @@ const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
 
 // Journal photos that no post shows and that are attached to no post are deleted once they are older than this many
-// days (never fewer than 1).
+// days. Only a whole number of days of at least 1 turns the cleanup on: 0, false or anything else turns it off.
 // To change it, define this constant in wp-config.php.
 defined( 'JOURNAL_ENTRIES_ORPHAN_DAYS' ) || define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );
 
@@ -421,8 +421,8 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		}
 	}
 
-	// The text is written only once every photo is attached to the day's post and has an image to show: a photo
-	// attached to nothing is deleted by the cleanup, so a post must never show one.
+	// The text is written only once every photo is attached to the day's post and has an image to show: the cleanup
+	// deletes old photos attached to nothing that no post shows, so a post must never show a photo that is not attached.
 	foreach ( $entry['attachments'] as $attachment_id ) {
 		if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
 			return new WP_Error( 'journal_photo_missing', 'Photo ' . $attachment_id . ' has no image to show.' );
@@ -758,9 +758,10 @@ function journal_entries_deactivate(): void {
 }
 
 /**
- * Whether any post (trashed ones included, they can be restored) still shows a journal photo, found by the
- * random 32-hex name its file was given, which every size of the photo shares. A photo whose name cannot be
- * read counts as shown, so that it is kept.
+ * Whether a journal photo is shown by a post (trashed ones included, they can be restored): its file appears in
+ * a post's content, found by the random 32-hex name every size of the photo shares, or it is some post's
+ * featured image. A photo referenced only by its id in a [gallery] shortcode is not recognised. Every doubt
+ * counts as shown, so that the photo is kept: a name that cannot be read, a query that fails.
  */
 function journal_entries_photo_is_shown( int $attachment_id ): bool {
 	global $wpdb;
@@ -768,13 +769,38 @@ function journal_entries_photo_is_shown( int $attachment_id ): bool {
 	if ( ! $file || ! preg_match( '/^[0-9a-f]{32}/', basename( $file ), $stem ) ) {
 		return true;
 	}
-	$found = $wpdb->get_var(
+
+	$in_content = $wpdb->get_var(
 		$wpdb->prepare(
 			"SELECT ID FROM {$wpdb->posts} WHERE post_type <> 'revision' AND post_content LIKE %s LIMIT 1",
 			'%' . $wpdb->esc_like( $stem[0] ) . '%'
 		)
 	);
-	return null !== $found;
+	if ( '' !== $wpdb->last_error || null !== $in_content ) {
+		return true;
+	}
+
+	$as_thumbnail = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_thumbnail_id' AND meta_value = %s LIMIT 1",
+			(string) $attachment_id
+		)
+	);
+	return '' !== $wpdb->last_error || null !== $as_thumbnail;
+}
+
+/**
+ * The number of days after which an unused photo is deleted: JOURNAL_ENTRIES_ORPHAN_DAYS (or the value given)
+ * when it is an integer, or a string of digits only, of at least 1. Anything else returns 0, which turns the
+ * cleanup off: a value that is not understood must never shorten the time a photo is kept.
+ *
+ * @param mixed $value The value to judge.
+ */
+function journal_entries_orphan_days( $value = JOURNAL_ENTRIES_ORPHAN_DAYS ): int {
+	if ( is_string( $value ) && preg_match( '/^\d{1,6}$/', $value ) ) {
+		$value = (int) $value;
+	}
+	return is_int( $value ) && $value >= 1 ? $value : 0;
 }
 
 /**
@@ -783,6 +809,11 @@ function journal_entries_photo_is_shown( int $attachment_id ): bool {
  * deleted permanently. Old and unattached only makes a photo a candidate; it is deleted only if no post shows it.
  */
 function journal_entries_cleanup_orphans(): void {
+	$days = journal_entries_orphan_days();
+	if ( ! $days ) {
+		return;
+	}
+
 	$orphans = get_posts(
 		array(
 			'post_type'     => 'attachment',
@@ -790,7 +821,7 @@ function journal_entries_cleanup_orphans(): void {
 			'post_parent'   => 0,
 			'meta_key'      => '_journal_photo_id',
 			'date_query'    => array(
-				array( 'before' => max( 1, (int) JOURNAL_ENTRIES_ORPHAN_DAYS ) . ' days ago' ),
+				array( 'before' => $days . ' days ago' ),
 			),
 			'numberposts'   => -1,
 			'fields'        => 'ids',

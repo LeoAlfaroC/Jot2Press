@@ -107,3 +107,27 @@ test( "the photos of a day's post deleted permanently are cleaned up", async () 
 
 	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
 } );
+
+test( "a photo that is a post's featured image is kept", async () => {
+	const photo = await uploadPhoto();
+	const url = ( await readMedia( photo.body.attachment_id ) ).source_url;
+	const sent = await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ photo.id ] } );
+	const other = wp( 'post', 'create', '--post_title=Elsewhere', '--post_status=publish', '--porcelain' ).match( /^\d+$/m )[ 0 ];
+	wp( 'post', 'meta', 'add', other, '_thumbnail_id', String( photo.body.attachment_id ) );
+	backdate( photo.body.attachment_id );
+	wp( 'post', 'delete', String( sent.body.post_id ), '--force' );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 200 );
+	assert.equal( ( await fetch( url ) ).status, 200 );
+} );
+
+test( 'the cleanup deletes nothing when the number of days is not a whole number of at least 1', () => {
+	const output = wp(
+		'eval',
+		`$out = array(); foreach ( array( 30, "30", 1, 0, -5, false, null, "", "off", 0.5, 30.5, "30d", "7 weeks" ) as $value ) { $out[] = journal_entries_orphan_days( $value ); } echo "RESULT:" . wp_json_encode( $out );`
+	);
+	const result = JSON.parse( output.match( /RESULT:(\[.*?\])/ )[ 1 ] );
+	assert.deepEqual( result, [ 30, 30, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] );
+} );
