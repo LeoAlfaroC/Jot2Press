@@ -1,0 +1,8 @@
+{
+  "core": null,
+  "plugins": [ "./journal-entries" ],
+  "port": 8888,
+  "config": {
+    "WP_ENVIRONMENT_TYPE": "local"
+  }
+}

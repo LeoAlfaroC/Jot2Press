@@ -1,0 +1,13 @@
+{
+  "name": "journal-entries-plugin",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "env:start": "wp-env start",
+    "env:stop": "wp-env stop",
+    "test": "node tests/setup.mjs && node --test --test-concurrency=1 \"tests/**/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@wordpress/env": "11.17.0"
+  }
+}
