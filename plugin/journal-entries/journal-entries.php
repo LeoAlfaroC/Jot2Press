@@ -392,7 +392,7 @@ function journal_entries_append( int $post_id, string $markup ) {
 /**
  * Finds or creates the day's post and appends the entry to it.
  *
- * @param array        $entry    A validated entry.
+ * @param array        $entry    A validated entry, with the `attachments` key (attachment ids) the handler adds.
  * @param WP_Term|null $fallback Output. Set to the default category when this entry created the day's post
  *                               and the category it asked for does not exist; left untouched otherwise.
  * @return int|WP_Error The id of the day's post.
@@ -413,14 +413,24 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		}
 	}
 
-	// Attached before the text is written: an entry whose text is in the post always has its photos attached.
+	// The text is written only once every photo is attached to the day's post and has an image to show: a photo
+	// attached to nothing is deleted by the cleanup, so a post must never show one.
 	foreach ( $entry['attachments'] as $attachment_id ) {
-		wp_update_post(
+		if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
+			return new WP_Error( 'journal_photo_missing', 'Photo ' . $attachment_id . ' has no image to show.' );
+		}
+	}
+	foreach ( $entry['attachments'] as $attachment_id ) {
+		$attached = wp_update_post(
 			array(
 				'ID'          => $attachment_id,
 				'post_parent' => $post_id,
-			)
+			),
+			true
 		);
+		if ( is_wp_error( $attached ) ) {
+			return $attached;
+		}
 	}
 
 	$result = journal_entries_append(
@@ -459,13 +469,6 @@ function journal_entries_handle_entry( WP_REST_Request $request ) {
 		return journal_entries_duplicate_response( $existing );
 	}
 
-	// Checked after the duplicate lookup: a retried entry answers 200 even if its photos were since cleaned up.
-	$attachments = journal_entries_resolve_photos( $entry['photo_ids'] );
-	if ( is_wp_error( $attachments ) ) {
-		return $attachments;
-	}
-	$entry['attachments'] = $attachments;
-
 	if ( ! journal_entries_lock( $entry['day'] ) ) {
 		return journal_entries_error( 'journal_busy', 'Another entry for this day is being stored. Try again.', 503 );
 	}
@@ -480,7 +483,14 @@ function journal_entries_handle_entry( WP_REST_Request $request ) {
 		if ( $existing ) {
 			return journal_entries_duplicate_response( $existing );
 		}
-		$post_id = journal_entries_store_entry( $entry, $fallback );
+		// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
+		// the photos are looked up and attached with nothing but this request's own code in between.
+		$attachments = journal_entries_resolve_photos( $entry['photo_ids'] );
+		if ( is_wp_error( $attachments ) ) {
+			return $attachments;
+		}
+		$entry['attachments'] = $attachments;
+		$post_id              = journal_entries_store_entry( $entry, $fallback );
 	} finally {
 		journal_entries_unlock( $entry['day'] );
 	}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { api, at, BASE, dayAllocator, readMedia, readPost, sendEntry, uploadPhoto, uuid } from './helpers.mjs';
+import { api, at, BASE, dayAllocator, readMedia, readPost, sendEntry, uploadPhoto, uuid, wp } from './helpers.mjs';
 
 const day = dayAllocator( 3 );
 
@@ -148,8 +148,10 @@ test( 'a repeated photo entry answers 200 and adds no second image', async () =>
 
 test( 'a visitor cannot find a photo after it is attached to the day post', async () => {
 	const upload = await uploadPhoto();
-	await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ upload.id ] } );
+	const sent = await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ upload.id ] } );
 	const id = upload.body.attachment_id;
+	assert.equal( sent.status, 201 );
+	assert.equal( ( await readMedia( id ) ).post, sent.body.post_id );
 
 	assert.equal( ( await api( 'GET', `/wp/v2/media/${ id }`, { who: 'anonymous' } ) ).status, 401 );
 	const list = await api( 'GET', '/wp/v2/media', { who: 'anonymous', query: '&per_page=100' } );
@@ -182,4 +184,60 @@ test( 'a public day post shows its photos to a visitor while the photos stay unl
 	assert.ok( list.body.every( ( item ) => item.id !== id ) );
 	const page = await fetch( `${ BASE }/?attachment_id=${ id }`, { redirect: 'manual' } );
 	assert.equal( page.status, 404 );
+} );
+
+test( 'an entry is not written when one of its photos cannot be attached', async () => {
+	const d = day();
+	const upload = await uploadPhoto();
+	const attachmentId = upload.body.attachment_id;
+	const fields = { id: uuid(), written_at: at( d, '11:00:00' ), text: 'Needs its photo.', photo_ids: [ upload.id ] };
+	// Inside the test site: send the entry as an administrator while WordPress refuses to save any attachment.
+	const attempt = `
+		add_filter( 'wp_insert_post_empty_content', function ( $empty, $postarr ) {
+			return 'attachment' === ( $postarr['post_type'] ?? '' ) ? true : $empty;
+		}, 10, 2 );
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$request = new WP_REST_Request( 'POST', '/journal/v1/entries' );
+		$request->set_body_params( json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) );
+		$response = rest_do_request( $request );
+		echo 'STATUS=' . $response->get_status() . "\\n";
+		echo 'CODE=' . ( $response->is_error() ? $response->as_error()->get_error_code() : '' ) . "\\n";
+	`;
+	const output = wp( 'eval', attempt );
+	assert.ok( output.includes( 'STATUS=500' ), output );
+	assert.ok( output.includes( 'CODE=journal_failure' ), output );
+	assert.equal( ( await readMedia( attachmentId ) ).post, null );
+	const posts = await api( 'GET', '/wp/v2/posts', { query: `&context=edit&status=any&slug=${ d }` } );
+	assert.ok( posts.body.every( ( post ) => ! post.content.raw.includes( fields.text ) ) );
+
+	const retry = await sendEntry( fields );
+	assert.equal( retry.status, 201 );
+	const post = await readPost( retry.body.post_id );
+	assert.equal( post.content.raw.split( fields.text ).length - 1, 1 );
+	assert.equal( ( await readMedia( attachmentId ) ).post, retry.body.post_id );
+} );
+
+test( 'a repeated entry is answered as a duplicate even after its photo was deleted', async () => {
+	const upload = await uploadPhoto();
+	const fields = { id: uuid(), written_at: at( day(), '12:00:00' ), text: 'Stored once.', photo_ids: [ upload.id ] };
+	const first = await sendEntry( fields );
+	assert.equal( first.status, 201 );
+
+	wp( 'post', 'delete', String( upload.body.attachment_id ), '--force' );
+	const second = await sendEntry( fields );
+	assert.equal( second.status, 200 );
+	assert.deepEqual( second.body, { status: 'duplicate', post_id: first.body.post_id } );
+} );
+
+test( 'an entry whose text was written but whose id row was not is recovered even after its photo was deleted', async () => {
+	const upload = await uploadPhoto();
+	const fields = { id: uuid(), written_at: at( day(), '13:00:00' ), text: 'Recovered.', photo_ids: [ upload.id ] };
+	const first = await sendEntry( fields );
+	assert.equal( first.status, 201 );
+
+	wp( 'post', 'meta', 'delete', String( first.body.post_id ), '_journal_entry_id', fields.id );
+	wp( 'post', 'delete', String( upload.body.attachment_id ), '--force' );
+	const second = await sendEntry( fields );
+	assert.equal( second.status, 200 );
+	assert.deepEqual( second.body, { status: 'duplicate', post_id: first.body.post_id } );
 } );
