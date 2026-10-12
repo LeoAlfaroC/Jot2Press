@@ -24,7 +24,8 @@ const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 // The most photos one entry can show.
 const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
 
-// Uploaded photos that no entry ever used are deleted after this many days.
+// Journal photos that no post shows and that are attached to no post are deleted once they are older than this many
+// days (never fewer than 1).
 // To change it, define this constant in wp-config.php.
 defined( 'JOURNAL_ENTRIES_ORPHAN_DAYS' ) || define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );
 
@@ -757,8 +758,29 @@ function journal_entries_deactivate(): void {
 }
 
 /**
- * Deletes journal photos that have stayed unattached for too long: uploads whose entry
- * never arrived, and photos of a day's post that was deleted permanently.
+ * Whether any post (trashed ones included, they can be restored) still shows a journal photo, found by the
+ * random 32-hex name its file was given, which every size of the photo shares. A photo whose name cannot be
+ * read counts as shown, so that it is kept.
+ */
+function journal_entries_photo_is_shown( int $attachment_id ): bool {
+	global $wpdb;
+	$file = get_attached_file( $attachment_id );
+	if ( ! $file || ! preg_match( '/^[0-9a-f]{32}/', basename( $file ), $stem ) ) {
+		return true;
+	}
+	$found = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT ID FROM {$wpdb->posts} WHERE post_type <> 'revision' AND post_content LIKE %s LIMIT 1",
+			'%' . $wpdb->esc_like( $stem[0] ) . '%'
+		)
+	);
+	return null !== $found;
+}
+
+/**
+ * Deletes journal photos that no post shows and that are attached to no post, once they are older than
+ * JOURNAL_ENTRIES_ORPHAN_DAYS: uploads whose entry never arrived, and photos of a day's post that was
+ * deleted permanently. Old and unattached only makes a photo a candidate; it is deleted only if no post shows it.
  */
 function journal_entries_cleanup_orphans(): void {
 	$orphans = get_posts(
@@ -768,7 +790,7 @@ function journal_entries_cleanup_orphans(): void {
 			'post_parent'   => 0,
 			'meta_key'      => '_journal_photo_id',
 			'date_query'    => array(
-				array( 'before' => JOURNAL_ENTRIES_ORPHAN_DAYS . ' days ago' ),
+				array( 'before' => max( 1, (int) JOURNAL_ENTRIES_ORPHAN_DAYS ) . ' days ago' ),
 			),
 			'numberposts'   => -1,
 			'fields'        => 'ids',
@@ -776,6 +798,12 @@ function journal_entries_cleanup_orphans(): void {
 		)
 	);
 	foreach ( $orphans as $attachment_id ) {
+		// Read again just before deleting: an entry may have attached or used the photo since the list was made.
+		clean_post_cache( $attachment_id );
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment || 0 !== (int) $attachment->post_parent || journal_entries_photo_is_shown( $attachment_id ) ) {
+			continue;
+		}
 		wp_delete_attachment( $attachment_id, true );
 	}
 }

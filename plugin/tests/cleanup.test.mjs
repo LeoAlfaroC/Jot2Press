@@ -13,6 +13,15 @@ function backdate( attachmentId ) {
 	);
 }
 
+/** Makes an attachment look as if it had been uploaded the given number of days ago. */
+function backdateDays( attachmentId, days ) {
+	const id = Number( attachmentId );
+	wp(
+		'eval',
+		`global $wpdb; $date = gmdate( "Y-m-d H:i:s", time() - ${ days } * DAY_IN_SECONDS ); $wpdb->update( $wpdb->posts, array( "post_date" => get_date_from_gmt( $date ), "post_date_gmt" => $date ), array( "ID" => ${ id } ) ); clean_post_cache( ${ id } );`
+	);
+}
+
 const runCleanup = () => wp( 'cron', 'event', 'run', 'journal_entries_cleanup' );
 
 const mediaStatus = async ( attachmentId ) => ( await api( 'GET', `/wp/v2/media/${ attachmentId }` ) ).status;
@@ -61,4 +70,40 @@ test( 'cleanup is scheduled to run daily', () => {
 	const event = events.find( ( candidate ) => candidate.hook === 'journal_entries_cleanup' );
 	assert.ok( event, 'journal_entries_cleanup is not scheduled' );
 	assert.equal( event.recurrence, '1 day' );
+} );
+
+test( 'a photo that a post still shows is kept even when it is attached to nothing', async () => {
+	const photo = await uploadPhoto();
+	const url = ( await readMedia( photo.body.attachment_id ) ).source_url;
+	await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ photo.id ] } );
+	backdate( photo.body.attachment_id );
+	wp( 'post', 'update', String( photo.body.attachment_id ), '--post_parent=0' );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 200 );
+	assert.equal( ( await fetch( url ) ).status, 200 );
+} );
+
+test( 'a photo is deleted only after the configured number of days', async () => {
+	const young = await uploadPhoto();
+	backdateDays( young.body.attachment_id, 29 );
+	const old = await uploadPhoto();
+	backdateDays( old.body.attachment_id, 31 );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( young.body.attachment_id ), 200 );
+	assert.equal( await mediaStatus( old.body.attachment_id ), 404 );
+} );
+
+test( "the photos of a day's post deleted permanently are cleaned up", async () => {
+	const photo = await uploadPhoto();
+	const sent = await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ photo.id ] } );
+	backdate( photo.body.attachment_id );
+	wp( 'post', 'delete', String( sent.body.post_id ), '--force' );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
 } );
