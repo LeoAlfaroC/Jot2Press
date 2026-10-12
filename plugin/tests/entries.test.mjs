@@ -4,8 +4,8 @@ import { api, at, dayAllocator, readPost, sendEntry, uuid, wp } from './helpers.
 
 const day = dayAllocator( 1 );
 
-const paragraph = ( time, text, where = '' ) =>
-	`<!-- wp:paragraph -->\n<p><strong>${ time }</strong>${ where } — ${ text }</p>\n<!-- /wp:paragraph -->`;
+const paragraph = ( id, time, text, where = '' ) =>
+	`<!-- wp:paragraph {"className":"journal-entry-${ id }"} -->\n<p class="journal-entry-${ id }"><strong>${ time }</strong>${ where } — ${ text }</p>\n<!-- /wp:paragraph -->`;
 
 const place = ( lat, lng ) =>
 	` · ${ lat }, ${ lng } (<a href="https://www.google.com/maps/search/?api=1&amp;query=${ lat }%2C${ lng }">Google Maps</a>)`;
@@ -21,8 +21,9 @@ function englishDate( d ) {
 
 test( 'the first entry of a day creates a private post in the journal category', async () => {
 	const d = day();
+	const id = uuid();
 	const { status, body } = await sendEntry( {
-		id: uuid(),
+		id,
 		written_at: at( d, '09:15:00' ),
 		text: 'Breakfast with Ana.',
 	} );
@@ -35,7 +36,7 @@ test( 'the first entry of a day creates a private post in the journal category',
 	assert.equal( post.slug, d );
 	assert.equal( post.date, `${ d }T09:15:00` );
 	assert.deepEqual( post.categories, [ categories[ 0 ].id ] );
-	assert.equal( post.content.raw, paragraph( '09:15', 'Breakfast with Ana.' ) );
+	assert.equal( post.content.raw, paragraph( id, '09:15', 'Breakfast with Ana.' ) );
 } );
 
 test( 'without a title field the post is titled with the ISO date and the English date', async () => {
@@ -70,33 +71,37 @@ test( 'a title field sets the title of a newly created post', async () => {
 
 test( 'a second entry is appended below the first and its title field is ignored', async () => {
 	const d = day();
-	const first = await sendEntry( { id: uuid(), written_at: at( d, '09:15:00' ), text: 'First.', title: 'Original title' } );
-	const second = await sendEntry( { id: uuid(), written_at: at( d, '14:32:00' ), text: 'Second.', title: 'Another title' } );
+	const [ id1, id2 ] = [ uuid(), uuid() ];
+	const first = await sendEntry( { id: id1, written_at: at( d, '09:15:00' ), text: 'First.', title: 'Original title' } );
+	const second = await sendEntry( { id: id2, written_at: at( d, '14:32:00' ), text: 'Second.', title: 'Another title' } );
 	assert.equal( second.status, 201 );
 	assert.equal( second.body.post_id, first.body.post_id );
 
 	const post = await readPost( first.body.post_id );
 	assert.equal( post.title.raw, 'Original title' );
-	assert.equal( post.content.raw, paragraph( '09:15', 'First.' ) + '\n\n' + paragraph( '14:32', 'Second.' ) );
+	assert.equal( post.content.raw, paragraph( id1, '09:15', 'First.' ) + '\n\n' + paragraph( id2, '14:32', 'Second.' ) );
 } );
 
 test( 'the day and the time come from written_at as written, not from UTC', async () => {
 	const d = day();
 	// 23:58 at UTC-5 is already the next day in UTC.
-	const { body } = await sendEntry( { id: uuid(), written_at: at( d, '23:58:00', '-05:00' ), text: 'Late.' } );
+	const id = uuid();
+	const { body } = await sendEntry( { id, written_at: at( d, '23:58:00', '-05:00' ), text: 'Late.' } );
 	const post = await readPost( body.post_id );
 	assert.equal( post.slug, d );
-	assert.equal( post.content.raw, paragraph( '23:58', 'Late.' ) );
+	assert.equal( post.content.raw, paragraph( id, '23:58', 'Late.' ) );
 } );
 
 test( 'text is stored exactly as typed', async () => {
 	const d = day();
 	const text = 'Path C:\\notes\\today & "quoted" <b>not bold</b> it\'s 🎉\nsecond line';
-	const { body } = await sendEntry( { id: uuid(), written_at: at( d, '10:00:00' ), text } );
+	const id = uuid();
+	const { body } = await sendEntry( { id, written_at: at( d, '10:00:00' ), text } );
 	const post = await readPost( body.post_id );
 	assert.equal(
 		post.content.raw,
 		paragraph(
+			id,
 			'10:00',
 			'Path C:\\notes\\today &amp; &quot;quoted&quot; &lt;b&gt;not bold&lt;/b&gt; it&#039;s 🎉<br>second line'
 		)
@@ -105,15 +110,17 @@ test( 'text is stored exactly as typed', async () => {
 
 test( 'surrounding whitespace is trimmed from the text', async () => {
 	const d = day();
-	const { body } = await sendEntry( { id: uuid(), written_at: at( d, '10:00:00' ), text: '  padded \n' } );
+	const id = uuid();
+	const { body } = await sendEntry( { id, written_at: at( d, '10:00:00' ), text: '  padded \n' } );
 	const post = await readPost( body.post_id );
-	assert.equal( post.content.raw, paragraph( '10:00', 'padded' ) );
+	assert.equal( post.content.raw, paragraph( id, '10:00', 'padded' ) );
 } );
 
 test( 'a location is shown after the time as coordinates with a Google Maps link', async () => {
 	const d = day();
+	const id = uuid();
 	const { status, body } = await sendEntry( {
-		id: uuid(),
+		id,
 		written_at: at( d, '14:32:00' ),
 		text: 'At the pier.',
 		location: { lat: -12.0464, lng: -77.042793 },
@@ -121,19 +128,20 @@ test( 'a location is shown after the time as coordinates with a Google Maps link
 	assert.equal( status, 201 );
 	const post = await readPost( body.post_id );
 	// Five decimals: -12.0464 is padded, -77.042793 is rounded.
-	assert.equal( post.content.raw, paragraph( '14:32', 'At the pier.', place( '-12.04640', '-77.04279' ) ) );
+	assert.equal( post.content.raw, paragraph( id, '14:32', 'At the pier.', place( '-12.04640', '-77.04279' ) ) );
 } );
 
 test( 'whole-number coordinates and a null location are accepted', async () => {
 	const d = day();
-	const first = await sendEntry( { id: uuid(), written_at: at( d, '08:00:00' ), text: 'North.', location: { lat: 90, lng: 180 } } );
-	const second = await sendEntry( { id: uuid(), written_at: at( d, '09:00:00' ), text: 'Nowhere.', location: null } );
+	const [ id1, id2 ] = [ uuid(), uuid() ];
+	const first = await sendEntry( { id: id1, written_at: at( d, '08:00:00' ), text: 'North.', location: { lat: 90, lng: 180 } } );
+	const second = await sendEntry( { id: id2, written_at: at( d, '09:00:00' ), text: 'Nowhere.', location: null } );
 	assert.equal( first.status, 201 );
 	assert.equal( second.status, 201 );
 	const post = await readPost( first.body.post_id );
 	assert.equal(
 		post.content.raw,
-		paragraph( '08:00', 'North.', place( '90.00000', '180.00000' ) ) + '\n\n' + paragraph( '09:00', 'Nowhere.' )
+		paragraph( id1, '08:00', 'North.', place( '90.00000', '180.00000' ) ) + '\n\n' + paragraph( id2, '09:00', 'Nowhere.' )
 	);
 } );
 
@@ -208,14 +216,15 @@ test( 'a category that does not exist falls back to the default one, and the res
 
 test( 'a draft day post receives later entries and keeps its day when it is published', async () => {
 	const d = day();
-	const first = await sendEntry( { id: uuid(), written_at: at( d, '09:15:00' ), text: 'Draft one.', post_status: 'draft' } );
-	const second = await sendEntry( { id: uuid(), written_at: at( d, '11:00:00' ), text: 'Draft two.' } );
+	const [ id1, id2 ] = [ uuid(), uuid() ];
+	const first = await sendEntry( { id: id1, written_at: at( d, '09:15:00' ), text: 'Draft one.', post_status: 'draft' } );
+	const second = await sendEntry( { id: id2, written_at: at( d, '11:00:00' ), text: 'Draft two.' } );
 	assert.equal( second.body.post_id, first.body.post_id );
 
 	let post = await readPost( first.body.post_id );
 	assert.equal( post.status, 'draft' );
 	assert.equal( post.date, `${ d }T09:15:00` );
-	assert.equal( post.content.raw, paragraph( '09:15', 'Draft one.' ) + '\n\n' + paragraph( '11:00', 'Draft two.' ) );
+	assert.equal( post.content.raw, paragraph( id1, '09:15', 'Draft one.' ) + '\n\n' + paragraph( id2, '11:00', 'Draft two.' ) );
 
 	// Published by hand later, as from Jetpack: WordPress would give a dateless draft today's date.
 	await api( 'POST', `/wp/v2/posts/${ first.body.post_id }`, { json: { status: 'publish' } } );
@@ -316,14 +325,15 @@ test( 'a post edited by hand keeps its edits and still receives the next entry',
 		json: { title: 'Renamed by hand', slug: 'renamed-by-hand', content: 'Rewritten by hand.' },
 	} );
 
-	const second = await sendEntry( { id: uuid(), written_at: at( d, '11:00:00' ), text: 'After the edit.' } );
+	const id2 = uuid();
+	const second = await sendEntry( { id: id2, written_at: at( d, '11:00:00' ), text: 'After the edit.' } );
 	assert.equal( second.body.post_id, first.body.post_id );
 
 	const post = await readPost( first.body.post_id );
 	assert.equal( post.title.raw, 'Renamed by hand' );
 	assert.equal( post.slug, 'renamed-by-hand' );
 	assert.equal( post.status, 'private' );
-	assert.equal( post.content.raw, 'Rewritten by hand.\n\n' + paragraph( '11:00', 'After the edit.' ) );
+	assert.equal( post.content.raw, 'Rewritten by hand.\n\n' + paragraph( id2, '11:00', 'After the edit.' ) );
 } );
 
 test( 'appending entries does not pile up revisions', async () => {

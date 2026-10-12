@@ -303,8 +303,13 @@ function journal_entries_render_location( array $location ): string {
 	return " · {$lat}, {$lng} (<a href=\"https://www.google.com/maps/search/?api=1&amp;query={$lat}%2C{$lng}\">Google Maps</a>)";
 }
 
+/** The CSS class that carries an entry's id inside its own markup, so the id is saved together with the text. */
+function journal_entries_marker( string $id ): string {
+	return 'journal-entry-' . $id;
+}
+
 /** Builds the block markup for one entry: the time, the place when known, then the text. */
-function journal_entries_render( DateTimeImmutable $written, string $text, ?array $location ): string {
+function journal_entries_render( string $id, DateTimeImmutable $written, string $text, ?array $location ): string {
 	$line = '<strong>' . $written->format( 'H:i' ) . '</strong>';
 	if ( null !== $location ) {
 		$line .= journal_entries_render_location( $location );
@@ -312,7 +317,8 @@ function journal_entries_render( DateTimeImmutable $written, string $text, ?arra
 	if ( '' !== $text ) {
 		$line .= ' — ' . str_replace( array( "\r\n", "\r", "\n" ), '<br>', esc_html( $text ) );
 	}
-	return "<!-- wp:paragraph -->\n<p>{$line}</p>\n<!-- /wp:paragraph -->";
+	$marker = journal_entries_marker( $id );
+	return "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->";
 }
 
 /**
@@ -365,7 +371,7 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		}
 	}
 
-	$result = journal_entries_append( $post_id, journal_entries_render( $entry['written'], $entry['text'], $entry['location'] ) );
+	$result = journal_entries_append( $post_id, journal_entries_render( $entry['id'], $entry['written'], $entry['text'], $entry['location'] ) );
 	if ( is_wp_error( $result ) ) {
 		return $result;
 	}
@@ -405,6 +411,10 @@ function journal_entries_handle_entry( WP_REST_Request $request ) {
 	try {
 		// The same entry may have been stored by another request while this one waited for the lock.
 		$existing = journal_entries_find_entry_post( $entry['id'] );
+		if ( ! $existing ) {
+			// Or its text may have been written by a store that failed before the id row was.
+			$existing = journal_entries_recover_entry( $entry );
+		}
 		if ( $existing ) {
 			return journal_entries_duplicate_response( $existing );
 		}
@@ -459,4 +469,24 @@ function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
 		),
 		200
 	);
+}
+
+/**
+ * Finds an entry whose text reached the day's post although its id row was never written (a store that failed
+ * after the content write), records the id row, and returns the day post's id.
+ * Returns 0 when the day's post does not hold this entry. Call it only while the day is locked.
+ */
+function journal_entries_recover_entry( array $entry ): int {
+	$post_id = journal_entries_find_day_post( $entry['day'] );
+	if ( ! $post_id ) {
+		return 0;
+	}
+	// Read the content from the database, not from a copy cached earlier in this request.
+	clean_post_cache( $post_id );
+	$post = get_post( $post_id );
+	if ( ! $post || false === strpos( $post->post_content, journal_entries_marker( $entry['id'] ) ) ) {
+		return 0;
+	}
+	add_post_meta( $post_id, '_journal_entry_id', $entry['id'] );
+	return $post_id;
 }
