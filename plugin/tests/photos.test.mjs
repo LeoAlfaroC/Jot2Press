@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { api, BASE, fixture, pluginDir, readMedia, uploadPhoto, uuid, wp } from './helpers.mjs';
+import { api, authHeader, BASE, fixture, lockName, pluginDir, readMedia, uploadPhoto, uuid, wp } from './helpers.mjs';
 
 const storedPath = ( extension ) =>
 	new RegExp( `^/wp-content/uploads/journal/\\d{4}/\\d{2}/[0-9a-f]{32}\\.${ extension }$` );
@@ -78,7 +78,7 @@ test( 'a PNG sent under a .jpg name is stored as a PNG', async () => {
 test( 'an upload waits its turn while the same photo id is being stored', async () => {
 	const id = uuid();
 	// Hold the photo id's lock from a separate database connection for 9 seconds.
-	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('{$wpdb->prefix}journal_${ id }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
+	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('${ lockName( id ) }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
 	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
 	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
 	try {
@@ -124,6 +124,23 @@ test( 'a request without a file or with a bad id is rejected', async () => {
 	const badId = await uploadPhoto( { id: 'not-a-uuid' } );
 	assert.equal( badId.status, 400 );
 	assert.equal( badId.body.code, 'invalid_id' );
+
+	// A valid UUID followed by a line break is not an id. FormData would turn the line break into CRLF, so the
+	// multipart body is written by hand.
+	const boundary = 'journal-test-boundary';
+	const body = Buffer.concat( [
+		Buffer.from( `--${ boundary }\r\nContent-Disposition: form-data; name="id"\r\n\r\n${ uuid() }\n\r\n` ),
+		Buffer.from( `--${ boundary }\r\nContent-Disposition: form-data; name="photo"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n` ),
+		fixture( 'photo.jpg' ),
+		Buffer.from( `\r\n--${ boundary }--\r\n` ),
+	] );
+	const response = await fetch( `${ BASE }/?rest_route=/journal/v1/photos`, {
+		method: 'POST',
+		headers: { ...authHeader(), 'Content-Type': `multipart/form-data; boundary=${ boundary }` },
+		body,
+	} );
+	assert.equal( response.status, 400 );
+	assert.equal( ( await response.json() ).code, 'invalid_id' );
 } );
 
 test( 'photo uploads need credentials and the right to publish', async () => {
@@ -180,4 +197,25 @@ test( 'a photo the server cannot store is answered as a server failure', async (
 	assert.equal( status, 500 );
 	assert.equal( body.code, 'journal_failure' );
 	assert.equal( body.message, 'The photo could not be stored.' );
+} );
+
+test( 'each photo gets its own random slug, not one derived from a title', async () => {
+	const first = await uploadPhoto();
+	const second = await uploadPhoto();
+	const slugs = [];
+	for ( const upload of [ first, second ] ) {
+		slugs.push( ( await readMedia( upload.body.attachment_id ) ).slug );
+	}
+	for ( const slug of slugs ) {
+		assert.match( slug, /^journal-photo-[0-9a-f]{16}$/ );
+	}
+	assert.notEqual( slugs[ 0 ], slugs[ 1 ] );
+} );
+
+test( 'lock names are 40 characters whatever the table prefix, and differ between installs', () => {
+	const output = wp(
+		'eval',
+		`global $wpdb; $a = journal_entries_lock_name( "2026-01-01" ); $b = journal_entries_lock_name( "2026-01-02" ); $old = $wpdb->prefix; $wpdb->prefix = str_repeat( "x", 60 ) . "_"; $long = journal_entries_lock_name( "2026-01-01" ); $wpdb->prefix = $old; echo "RESULT:" . wp_json_encode( array( strlen( $a ), strlen( $long ), $a === $long, $a === $b ) );`
+	);
+	assert.deepEqual( JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] ), [ 40, 40, false, false ] );
 } );

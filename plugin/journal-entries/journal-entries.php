@@ -54,6 +54,11 @@ function journal_entries_revisions_to_keep( $num, $post ) {
 	return $num;
 }
 
+/** Whether a value is an id: a UUID of exactly 36 characters (wp_is_uuid() alone accepts a trailing line break). */
+function journal_entries_is_id( $value ): bool {
+	return is_string( $value ) && 36 === strlen( $value ) && wp_is_uuid( $value );
+}
+
 function journal_entries_can_publish(): bool {
 	return current_user_can( 'publish_posts' );
 }
@@ -197,7 +202,7 @@ function journal_entries_parse_location( $value ) {
 function journal_entries_validate_entry( WP_REST_Request $request ) {
 	$id = $request->get_param( 'id' );
 	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! wp_is_uuid( $id ) ) {
+	if ( ! journal_entries_is_id( $id ) ) {
 		return journal_entries_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
@@ -246,7 +251,7 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 	}
 	foreach ( $photo_ids as $index => $photo_id ) {
 		$photo_id = is_string( $photo_id ) ? strtolower( $photo_id ) : '';
-		if ( ! wp_is_uuid( $photo_id ) ) {
+		if ( ! journal_entries_is_id( $photo_id ) ) {
 			return journal_entries_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
 		}
 		$photo_ids[ $index ] = $photo_id;
@@ -546,18 +551,27 @@ function journal_entries_find_entry_post( string $id ): int {
 	return $ids ? (int) $ids[0] : 0;
 }
 
+/**
+ * The name of the database lock for a day or a photo id. Hashed so that it is 40 characters whatever the table
+ * prefix (MySQL refuses names over 64), and so that two installs on one database server do not share locks.
+ */
+function journal_entries_lock_name( string $name ): string {
+	global $wpdb;
+	return 'journal_' . md5( DB_NAME . $wpdb->prefix . $name );
+}
+
 /** Takes the database lock for a day or a photo id. Returns false if another request holds it for too long. */
 function journal_entries_lock( string $name ): bool {
 	global $wpdb;
 	$taken = $wpdb->get_var(
-		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', $wpdb->prefix . 'journal_' . $name, JOURNAL_ENTRIES_LOCK_SECONDS )
+		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', journal_entries_lock_name( $name ), JOURNAL_ENTRIES_LOCK_SECONDS )
 	);
 	return '1' === (string) $taken;
 }
 
 function journal_entries_unlock( string $name ): void {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', $wpdb->prefix . 'journal_' . $name ) );
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', journal_entries_lock_name( $name ) ) );
 }
 
 function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
@@ -565,6 +579,16 @@ function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
 		array(
 			'status'  => 'duplicate',
 			'post_id' => $post_id,
+		),
+		200
+	);
+}
+
+function journal_entries_photo_duplicate_response( int $attachment_id ): WP_REST_Response {
+	return new WP_REST_Response(
+		array(
+			'status'        => 'duplicate',
+			'attachment_id' => $attachment_id,
 		),
 		200
 	);
@@ -660,19 +684,13 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 
 	$id = $request->get_param( 'id' );
 	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! wp_is_uuid( $id ) ) {
+	if ( ! journal_entries_is_id( $id ) ) {
 		return journal_entries_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
 	$existing = journal_entries_find_photo( $id );
 	if ( $existing ) {
-		return new WP_REST_Response(
-			array(
-				'status'        => 'duplicate',
-				'attachment_id' => $existing,
-			),
-			200
-		);
+		return journal_entries_photo_duplicate_response( $existing );
 	}
 
 	$files = $request->get_file_params();
@@ -709,13 +727,7 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 		// The same photo may have been stored by another request while this one waited for the lock.
 		$existing = journal_entries_find_photo( $id );
 		if ( $existing ) {
-			return new WP_REST_Response(
-				array(
-					'status'        => 'duplicate',
-					'attachment_id' => $existing,
-				),
-				200
-			);
+			return journal_entries_photo_duplicate_response( $existing );
 		}
 
 		// The stored extension follows the detected type, whatever name the client sent.
@@ -728,6 +740,8 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 				0,
 				array(
 					'post_title'  => 'Journal photo',
+					// Its own slug: left to WordPress, every photo would try journal-photo, -2, -3 ... one query each.
+					'post_name'   => 'journal-photo-' . bin2hex( random_bytes( 8 ) ),
 					// Private for good: WordPress lists ordinary unattached media to anonymous visitors.
 					'post_status' => 'private',
 					// Written with the attachment, so a retry finds it even if the request dies while sizing the image.

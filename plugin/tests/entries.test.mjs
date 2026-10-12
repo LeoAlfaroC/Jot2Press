@@ -330,6 +330,17 @@ test( 'invalid requests are rejected with a specific code', async () => {
 	}
 } );
 
+test( 'an id with a line break after a valid UUID is refused, as an entry id and as a photo id', async () => {
+	const d = day();
+	const valid = { id: uuid(), written_at: at( d, '10:00:00' ), text: 'ok' };
+	const entry = await sendEntry( { ...valid, id: uuid() + '\n' } );
+	assert.equal( entry.status, 400 );
+	assert.equal( entry.body.code, 'invalid_id' );
+	const photo = await sendEntry( { ...valid, photo_ids: [ uuid() + '\n' ] } );
+	assert.equal( photo.status, 400 );
+	assert.equal( photo.body.code, 'invalid_photo_ids' );
+} );
+
 test( 'a title of exactly 200 characters is accepted', async () => {
 	const d = day();
 	const title = 'x'.repeat( 200 );

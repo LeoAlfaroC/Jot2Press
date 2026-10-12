@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { api, at, dayAllocator, pluginDir, readPost, sendEntry, uuid, wp } from './helpers.mjs';
+import { api, at, dayAllocator, lockName, pluginDir, readPost, sendEntry, uuid, wp } from './helpers.mjs';
 
 const day = dayAllocator( 2 );
 
@@ -66,7 +66,7 @@ test( 'the same entry sent twice at once is stored once', async () => {
 test( 'an entry answers 503 while the day is locked and succeeds afterwards', async () => {
 	const d = day();
 	// Hold the day's lock from a separate database connection for 9 seconds.
-	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('{$wpdb->prefix}journal_${ d }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
+	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('${ lockName( d ) }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
 	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
 	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
 	await new Promise( ( resolve, reject ) => {

@@ -102,3 +102,9 @@ export async function readMedia( attachmentId ) {
 	const { body } = await api( 'GET', `/wp/v2/media/${ attachmentId }`, { query: '&context=edit' } );
 	return body;
 }
+
+/** Asks the plugin for the name of the database lock that guards a day (YYYY-MM-DD) or a photo id. */
+export function lockName( name ) {
+	const output = wp( 'eval', `echo 'LOCK:' . journal_entries_lock_name( ${ JSON.stringify( name ) } ) . ':END';` );
+	return output.match( /LOCK:(.*):END/ )[ 1 ];
+}
