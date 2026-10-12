@@ -88,7 +88,7 @@ Sending the same `id` again is safe: nothing is stored twice.
 
 ## Privacy
 
-- Day posts are private unless the app asks for another status: visible only to logged-in editors and administrators. A draft is visible to the same users.
+- Day posts are private unless the app asks for another status: visible only to the account that wrote them and to logged-in editors and administrators. A draft is visible to the same users.
 - A day post created as `publish` is public from its first entry, and every later entry of that day is public the moment it arrives, with its photos and its location. WordPress announces the post when it is created: it enters the feeds, and plugins that email subscribers or share to social networks may send it out with only that first entry.
 - Photos are private attachments under random filenames in `wp-content/uploads/journal/`, whatever the status of their post. WordPress does not list them to visitors, but the file itself is served to anyone who has its exact URL, which is how a public post shows them.
 - When the app sends a location, the entry shows its coordinates and a Google Maps link. They are part of the post content; opening the link sends the coordinates to Google.
