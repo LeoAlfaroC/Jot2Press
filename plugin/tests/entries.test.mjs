@@ -336,13 +336,65 @@ test( 'a post edited by hand keeps its edits and still receives the next entry',
 	assert.equal( post.content.raw, 'Rewritten by hand.\n\n' + paragraph( id2, '11:00', 'After the edit.' ) );
 } );
 
-test( 'appending entries does not pile up revisions', async () => {
+const revisionsOf = async ( postId ) =>
+	( await api( 'GET', `/wp/v2/posts/${ postId }/revisions`, { query: '&context=edit&per_page=100' } ) ).body;
+
+test( 'every appended entry leaves a revision of the day post', async () => {
 	const d = day();
-	const revisions = async ( id ) => ( await api( 'GET', `/wp/v2/posts/${ id }/revisions` ) ).body.length;
 	const first = await sendEntry( { id: uuid(), written_at: at( d, '09:00:00' ), text: 'One.' } );
-	await sendEntry( { id: uuid(), written_at: at( d, '09:01:00' ), text: 'Two.' } );
-	const before = await revisions( first.body.post_id );
-	await sendEntry( { id: uuid(), written_at: at( d, '09:02:00' ), text: 'Three.' } );
-	await sendEntry( { id: uuid(), written_at: at( d, '09:03:00' ), text: 'Four.' } );
-	assert.equal( await revisions( first.body.post_id ), before );
+	await sendEntry( { id: uuid(), written_at: at( d, '09:01:00' ), text: 'Second entry text.' } );
+	const revisions = await revisionsOf( first.body.post_id );
+	assert.ok( revisions.some( ( revision ) => revision.content.raw.includes( 'Second entry text.' ) ) );
+} );
+
+test( 'an entry lost to an editor that was open is found in the revisions', async () => {
+	const d = day();
+	const a = await sendEntry( { id: uuid(), written_at: at( d, '09:00:00' ), text: 'Entry A.' } );
+	const postId = a.body.post_id;
+	const openInEditor = ( await readPost( postId ) ).content.raw;
+
+	await sendEntry( { id: uuid(), written_at: at( d, '09:05:00' ), text: 'Entry B.' } );
+	// The editor saves the copy it opened before entry B arrived.
+	const saved = await api( 'POST', `/wp/v2/posts/${ postId }`, { json: { content: openInEditor } } );
+	assert.equal( saved.status, 200 );
+
+	assert.ok( ! ( await readPost( postId ) ).content.raw.includes( 'Entry B.' ) );
+	const revisions = await revisionsOf( postId );
+	assert.ok( revisions.some( ( revision ) => revision.content.raw.includes( 'Entry B.' ) ) );
+} );
+
+test( 'a day post keeps at most 30 revisions and respects a site that keeps fewer', () => {
+	const d = day();
+	const output = wp(
+		'eval',
+		`
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$day_post = wp_insert_post( array( 'post_title' => 'Cap', 'post_status' => 'private', 'post_content' => '', 'meta_input' => array( '_journal_date' => ${ JSON.stringify( d ) } ) ) );
+		$other    = wp_insert_post( array( 'post_title' => 'Ordinary', 'post_status' => 'private', 'post_content' => '' ) );
+		$number   = function ( $n ) { return function () use ( $n ) { return $n; }; };
+		$results  = array();
+		foreach ( array( -1, 100, 31, 30, 5, 0 ) as $site ) {
+			$filter = $number( $site );
+			add_filter( 'wp_revisions_to_keep', $filter, 5 );
+			$results[] = array( $site, wp_revisions_to_keep( get_post( $day_post ) ), wp_revisions_to_keep( get_post( $other ) ) );
+			remove_filter( 'wp_revisions_to_keep', $filter, 5 );
+		}
+		// The real thing: forty appends leave thirty revisions.
+		for ( $i = 0; $i < 40; $i++ ) {
+			journal_entries_append( $day_post, '<p>entry ' . $i . '</p>' );
+		}
+		$results[] = count( wp_get_post_revisions( $day_post ) );
+		echo 'RESULT:' . wp_json_encode( $results );
+		`
+	);
+	const result = JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] );
+	assert.deepEqual( result, [
+		[ -1, 30, -1 ],
+		[ 100, 30, 100 ],
+		[ 31, 30, 31 ],
+		[ 30, 30, 30 ],
+		[ 5, 5, 5 ],
+		[ 0, 0, 0 ],
+		30,
+	] );
 } );

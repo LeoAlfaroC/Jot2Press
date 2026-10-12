@@ -24,6 +24,10 @@ const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
 // The most photos one entry can show.
 const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
 
+// The most revisions WordPress keeps of a day's post. Each entry leaves one, which is where to look for an entry
+// that an editor left open overwrote; a site that keeps fewer (or none) is respected.
+const JOURNAL_ENTRIES_REVISIONS = 30;
+
 // Journal photos that no post shows and that are attached to no post are deleted once they are older than this many
 // days. Only a whole number of days from 1 to 999999 turns the cleanup on: anything else, including 0, false, text
 // and a decimal such as 30.0, turns it off.
@@ -35,9 +39,19 @@ add_action( 'rest_api_init', 'journal_entries_register_routes' );
 register_deactivation_hook( __FILE__, 'journal_entries_deactivate' );
 add_action( 'init', 'journal_entries_schedule_cleanup' );
 add_action( 'journal_entries_cleanup', 'journal_entries_cleanup_orphans' );
+add_filter( 'wp_revisions_to_keep', 'journal_entries_revisions_to_keep', 10, 2 );
 
 function journal_entries_error( string $code, string $message, int $status ): WP_Error {
 	return new WP_Error( $code, $message, array( 'status' => $status ) );
+}
+
+/** Caps the revisions of a day's post (a post with a _journal_date) at JOURNAL_ENTRIES_REVISIONS. */
+function journal_entries_revisions_to_keep( $num, $post ) {
+	$unlimited_or_more = $num < 0 || $num > JOURNAL_ENTRIES_REVISIONS;
+	if ( $unlimited_or_more && $post instanceof WP_Post && '' !== (string) get_post_meta( $post->ID, '_journal_date', true ) ) {
+		return JOURNAL_ENTRIES_REVISIONS;
+	}
+	return $num;
 }
 
 function journal_entries_can_publish(): bool {
@@ -377,7 +391,7 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
 }
 
 /**
- * Appends markup to the end of a post's current content without creating a revision.
+ * Appends markup to the end of a post's current content. WordPress saves a revision of the result, as for any edit.
  *
  * @return int|WP_Error
  */
@@ -387,8 +401,7 @@ function journal_entries_append( int $post_id, string $markup ) {
 	$content = rtrim( get_post( $post_id )->post_content );
 	$content = '' === $content ? $markup : $content . "\n\n" . $markup;
 
-	remove_action( 'post_updated', 'wp_save_post_revision', 10 );
-	$result = wp_update_post(
+	return wp_update_post(
 		wp_slash(
 			array(
 				'ID'           => $post_id,
@@ -397,9 +410,6 @@ function journal_entries_append( int $post_id, string $markup ) {
 		),
 		true
 	);
-	add_action( 'post_updated', 'wp_save_post_revision', 10, 1 );
-
-	return $result;
 }
 
 /**
