@@ -7,6 +7,8 @@ A WordPress plugin that appends short journal entries to one post per day, priva
 - WordPress 5.6 or later, PHP 7.4 or later, MySQL or MariaDB.
 - The site served over HTTPS (Application Passwords require it).
 
+The test suite has been run on WordPress 7.1.3, PHP 8.3 and MariaDB 12.3. The declared minimums, PHP 7.4 and WordPress 5.6, were checked by reading the code and by a PHP 7.4 syntax lint, not by running the suite on them.
+
 ## Install
 
 1. Build the zip: `cd plugin && npm run build`
@@ -27,6 +29,12 @@ define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo tha
 Values set there survive plugin updates.
 
 Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (a whole number of days from 1 to 999999; anything else, including `0`, `false`, text and a decimal such as `30.0`, turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
+
+Each account that can publish keeps its own day posts: an entry is added to the post of the account that sent it, never to another account's post for the same day.
+
+Each entry leaves a revision of the day's post, and WordPress keeps at most 30 for a day post (fewer if the site is set to keep fewer). They are where to look if an entry disappears because the post was open in an editor while the entry arrived: wp-admin → the post → Revisions.
+
+A photo that an entry used at the very moment the photo was still being processed is embedded at full size, without its smaller sizes; `wp media regenerate <id>` makes them.
 
 The category and the status of the day posts are chosen in the app, not here. The app sends them with each entry and the plugin uses them when that entry creates the day's post; it never changes a post that already exists. If the app names a category that no longer exists, the post goes to the default category and the response says so.
 
@@ -61,6 +69,8 @@ curl -s -u "$AUTH" -F "id=$PHOTO" -F "photo=@/path/to/photo.jpg" "$SITE/wp-json/
 curl -s -u "$AUTH" -H 'Content-Type: application/json' "$SITE/wp-json/journal/v1/entries" \
   -d "{\"id\":\"$(uuidgen | tr A-Z a-z)\",\"written_at\":\"$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/')\",\"photo_ids\":[\"$PHOTO\"]}"
 ```
+
+The `/wp-json/…` addresses need pretty permalinks. With plain permalinks the same route is `$SITE/?rest_route=/journal/v1/status`.
 
 Then open today's post in Jetpack or the WordPress admin: it is private, in the Journal category, and shows both entries with their times.
 
