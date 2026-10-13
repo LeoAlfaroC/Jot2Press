@@ -170,3 +170,36 @@ test( 'a large photo that a post shows is kept when it is attached to nothing', 
 
 	assert.equal( await mediaStatus( photo.body.attachment_id ), 200 );
 } );
+
+test( 'a photo shown only through a classic gallery shortcode is kept', async () => {
+	const forms = [
+		( id ) => `[gallery ids="7,${ id },9"]`,
+		( id ) => `[gallery columns="2" ids='${ id }']`,
+		( id ) => `[gallery ids=${ id } link="none"]`,
+		( id ) => `Before [gallery include="${ id }, 9"] after`,
+	];
+	const photos = [];
+	for ( const form of forms ) {
+		const photo = await uploadPhoto();
+		backdate( photo.body.attachment_id );
+		wp( 'post', 'create', '--post_title=Classic', '--post_status=private', `--post_content=${ form( photo.body.attachment_id ) }` );
+		photos.push( photo );
+	}
+
+	runCleanup();
+
+	for ( const [ index, photo ] of photos.entries() ) {
+		assert.equal( await mediaStatus( photo.body.attachment_id ), 200, forms[ index ]( 'N' ) );
+	}
+} );
+
+test( 'a gallery shortcode that names other photos does not keep this one', async () => {
+	const photo = await uploadPhoto();
+	const id = photo.body.attachment_id;
+	backdate( id );
+	wp( 'post', 'create', '--post_title=Classic', '--post_status=private', `--post_content=[gallery ids="${ id }0,9${ id }"] [gallery exclude="${ id }"] [audio ids="${ id }"]` );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( id ), 404 );
+} );

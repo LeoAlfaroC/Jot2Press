@@ -255,3 +255,67 @@ test( 'a photo wider than 2560 px is shown in its large size, not the original o
 	assert.match( src, /\/[0-9a-f]{32}-1024x768\.jpg$/ );
 	assert.ok( ! src.includes( 'scaled' ) );
 } );
+
+/** Deletes a photo's files from the server's disk, leaving its attachment in WordPress. */
+function loseFiles( attachmentId ) {
+	wp(
+		'eval',
+		`$file = get_attached_file( ${ Number( attachmentId ) } ); foreach ( glob( dirname( $file ) . '/' . substr( basename( $file ), 0, 32 ) . '*' ) as $path ) { unlink( $path ); }`
+	);
+}
+
+test( 'an entry whose photo lost its file on the server is rejected as an unknown photo and stores nothing', async () => {
+	const d = day();
+	const first = await sendEntry( { id: uuid(), written_at: at( d, '09:00:00' ), text: 'Morning.' } );
+	const before = ( await readPost( first.body.post_id ) ).content.raw;
+	const upload = await uploadPhoto();
+	loseFiles( upload.body.attachment_id );
+
+	const { status, body } = await sendEntry( { id: uuid(), written_at: at( d, '10:00:00' ), text: 'Lost.', photo_ids: [ upload.id ] } );
+	assert.equal( status, 400 );
+	assert.equal( body.code, 'unknown_photo' );
+	assert.equal( ( await readPost( first.body.post_id ) ).content.raw, before );
+} );
+
+test( 'uploading again a photo that lost its file replaces it, and the entry can then be stored', async () => {
+	const upload = await uploadPhoto();
+	const fields = { id: uuid(), written_at: at( day(), '11:00:00' ), text: 'Back again.', photo_ids: [ upload.id ] };
+	loseFiles( upload.body.attachment_id );
+	assert.equal( ( await sendEntry( fields ) ).status, 400 );
+
+	const again = await uploadPhoto( { id: upload.id } );
+	assert.equal( again.status, 201 );
+	assert.equal( again.body.status, 'created' );
+	assert.notEqual( again.body.attachment_id, upload.body.attachment_id );
+	assert.equal( ( await api( 'GET', `/wp/v2/media/${ upload.body.attachment_id }`, { query: '&context=edit' } ) ).status, 404 );
+
+	const retry = await sendEntry( fields );
+	assert.equal( retry.status, 201 );
+	const media = await readMedia( again.body.attachment_id );
+	assert.equal( media.post, retry.body.post_id );
+	const post = await readPost( retry.body.post_id );
+	assert.ok( post.content.raw.includes( `wp-image-${ again.body.attachment_id }` ), post.content.raw );
+	assert.equal( ( await fetch( media.source_url ) ).status, 200 );
+
+	// Once it is whole again, the same id is a duplicate as before.
+	const third = await uploadPhoto( { id: upload.id } );
+	assert.deepEqual( third.body, { status: 'duplicate', attachment_id: again.body.attachment_id } );
+} );
+
+test( 'a photo whose file is kept away from this server is not taken for a lost one', () => {
+	// A site that stores its uploads elsewhere serves them from another address and may keep no local copy.
+	const output = wp(
+		'eval',
+		`
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$id = wp_insert_attachment( array( 'post_mime_type' => 'image/jpeg', 'post_status' => 'private' ), 'journal/2001/01/' . str_repeat( 'a', 32 ) . '.jpg' );
+		wp_update_attachment_metadata( $id, array( 'width' => 64, 'height' => 48, 'file' => 'journal/2001/01/' . str_repeat( 'a', 32 ) . '.jpg' ) );
+		$here = journal_entries_photo_is_usable( $id );
+		add_filter( 'wp_get_attachment_url', function ( $url ) { return str_replace( 'http://localhost:8888', 'https://media.example', $url ); } );
+		$away = journal_entries_photo_is_usable( $id );
+		wp_delete_attachment( $id, true );
+		echo 'RESULT:' . wp_json_encode( array( $here, $away ) );
+		`
+	);
+	assert.deepEqual( JSON.parse( output.match( /RESULT:(\[.*?\])/ )[ 1 ] ), [ false, true ] );
+} );

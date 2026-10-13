@@ -626,6 +626,10 @@ function journal_entries_resolve_photos( array $photo_ids ) {
 		if ( ! $attachment_id ) {
 			return journal_entries_error( 'unknown_photo', 'Photo ' . $photo_id . ' has not been uploaded.', 400 );
 		}
+		// Same code as a photo never uploaded, so the app's answer is the same: upload it again.
+		if ( ! journal_entries_photo_is_usable( $attachment_id ) ) {
+			return journal_entries_error( 'unknown_photo', 'Photo ' . $photo_id . ' is no longer on the server. Upload it again.', 400 );
+		}
 		$attachment_ids[] = $attachment_id;
 	}
 	return $attachment_ids;
@@ -645,6 +649,24 @@ function journal_entries_find_photo( string $id ): int {
 		)
 	);
 	return $ids ? (int) $ids[0] : 0;
+}
+
+/**
+ * Whether a stored photo can still be shown: WordPress has an image for it and its file is where it should be.
+ * A photo that fails this is replaced when it is uploaded again, and an entry naming it is refused until then.
+ */
+function journal_entries_photo_is_usable( int $attachment_id ): bool {
+	if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
+		return false;
+	}
+	$file = get_attached_file( $attachment_id );
+	if ( $file && file_exists( $file ) ) {
+		return true;
+	}
+	// A site that keeps its uploads elsewhere serves them from another address and may hold no copy here:
+	// only a photo served from this server's uploads folder needs its file in it.
+	$uploads = wp_get_upload_dir();
+	return 0 !== strpos( (string) wp_get_attachment_url( $attachment_id ), $uploads['baseurl'] );
 }
 
 /** Sends journal photos to uploads/journal/YYYY/MM, apart from the blog's other media. */
@@ -689,7 +711,7 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 	}
 
 	$existing = journal_entries_find_photo( $id );
-	if ( $existing ) {
+	if ( $existing && journal_entries_photo_is_usable( $existing ) ) {
 		return journal_entries_photo_duplicate_response( $existing );
 	}
 
@@ -726,8 +748,12 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 	try {
 		// The same photo may have been stored by another request while this one waited for the lock.
 		$existing = journal_entries_find_photo( $id );
-		if ( $existing ) {
+		if ( $existing && journal_entries_photo_is_usable( $existing ) ) {
 			return journal_entries_photo_duplicate_response( $existing );
+		}
+		// A stored photo that lost its file is replaced by this upload: answering "duplicate" would leave it broken for good.
+		if ( $existing && ! wp_delete_attachment( $existing, true ) ) {
+			return journal_entries_error( 'journal_failure', 'The photo could not be stored.', 500 );
 		}
 
 		// The stored extension follows the detected type, whatever name the client sent.
@@ -793,8 +819,8 @@ function journal_entries_deactivate(): void {
 /**
  * Whether a journal photo is shown by a post (trashed ones included, they can be restored): its file appears in
  * a post's content, found by the random 32-hex name every size of the photo shares, or it is some post's
- * featured image. A photo referenced only by its id in a [gallery] shortcode is not recognised. Every doubt
- * counts as shown, so that the photo is kept: a name that cannot be read, a query that fails.
+ * featured image, or a classic [gallery] shortcode names it by its id. Every doubt counts as shown, so that the
+ * photo is kept: a name that cannot be read, a query that fails.
  */
 function journal_entries_photo_is_shown( int $attachment_id ): bool {
 	global $wpdb;
@@ -819,7 +845,27 @@ function journal_entries_photo_is_shown( int $attachment_id ): bool {
 			(string) $attachment_id
 		)
 	);
-	return '' !== $wpdb->last_error || null !== $as_thumbnail;
+	if ( '' !== $wpdb->last_error || null !== $as_thumbnail ) {
+		return true;
+	}
+
+	// [gallery ids="1,2"], or include="1,2" as older posts wrote it.
+	$with_gallery = $wpdb->get_col( "SELECT post_content FROM {$wpdb->posts} WHERE post_type <> 'revision' AND post_content LIKE '%[gallery%'" );
+	if ( '' !== $wpdb->last_error ) {
+		return true;
+	}
+	foreach ( $with_gallery as $content ) {
+		preg_match_all( '/\[gallery\b([^\]]*)\]/', $content, $galleries );
+		foreach ( $galleries[1] as $attributes ) {
+			$attributes = (array) shortcode_parse_atts( $attributes );
+			foreach ( array( 'ids', 'include' ) as $name ) {
+				if ( isset( $attributes[ $name ] ) && in_array( $attachment_id, wp_parse_id_list( $attributes[ $name ] ), true ) ) {
+					return true;
+				}
+			}
+		}
+	}
+	return false;
 }
 
 /**
