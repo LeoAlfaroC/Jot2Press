@@ -1,4 +1,4 @@
-# Journal Entries
+# Jot2Press
 
 A WordPress plugin that appends short journal entries to one post per day, private unless the app asks otherwise. It is the server side of the Android capture app in this repository.
 
