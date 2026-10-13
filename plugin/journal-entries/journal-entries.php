@@ -3,7 +3,7 @@
  * Plugin Name:       Journal Entries
  * Description:       Appends short journal entries to one post per day, private by default. Server side of the journal capture app for Android.
  * Version:           1.0.0
- * Requires at least: 5.6
+ * Requires at least: 7.1
  * Requires PHP:      7.4
  * License:           GPL-2.0-or-later
  */

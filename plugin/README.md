@@ -4,10 +4,10 @@ A WordPress plugin that appends short journal entries to one post per day, priva
 
 ## Requirements
 
-- WordPress 5.6 or later, PHP 7.4 or later, MySQL or MariaDB.
+- WordPress 7.1 or later, on any PHP version it supports (7.4 or later), with MySQL or MariaDB.
 - The site served over HTTPS (Application Passwords require it).
 
-The test suite has been run on WordPress 7.1.3, PHP 8.3 and MariaDB 12.3. The declared minimums, PHP 7.4 and WordPress 5.6, were checked by reading the code and by a PHP 7.4 syntax lint, not by running the suite on them.
+The plugin targets the current major version of WordPress and whatever that version supports. The test suite passes on WordPress 7.1.3 with PHP 7.4, the oldest it supports, and with PHP 8.3, both on MariaDB 12.3. It has not been run on MySQL.
 
 ## Install
 
