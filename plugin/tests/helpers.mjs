@@ -108,3 +108,30 @@ export function lockName( name ) {
 	const output = wp( 'eval', `echo 'LOCK:' . journal_entries_lock_name( ${ JSON.stringify( name ) } ) . ':END';` );
 	return output.match( /LOCK:(.*):END/ )[ 1 ];
 }
+
+/** Runs a shell command inside the test site's web server container. */
+function webShell( command ) {
+	return execFileSync( 'npx', [ 'wp-env', 'run', 'wordpress', 'sh', '-c', command ], {
+		cwd: pluginDir,
+		encoding: 'utf8',
+		stdio: [ 'ignore', 'pipe', 'pipe' ],
+	} );
+}
+
+/**
+ * Runs `run` while the web server's PHP accepts files up to `file` and request bodies up to `body`
+ * (PHP sizes such as '16K' or '8M'), then puts the server's settings back.
+ */
+export async function withUploadLimits( { file, body }, run ) {
+	const htaccess = '/var/www/html/.htaccess';
+	const backup = '/tmp/htaccess.before-upload-limits';
+	webShell( `cp ${ htaccess } ${ backup }` );
+	try {
+		webShell(
+			`{ echo "php_value upload_max_filesize ${ file }"; echo "php_value post_max_size ${ body }"; cat ${ backup }; } > ${ htaccess }`
+		);
+		return await run();
+	} finally {
+		webShell( `cp ${ backup } ${ htaccess }` );
+	}
+}

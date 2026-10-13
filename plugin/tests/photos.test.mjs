@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { api, authHeader, BASE, fixture, lockName, pluginDir, readMedia, uploadPhoto, uuid, wp } from './helpers.mjs';
+import {
+	api,
+	authHeader,
+	BASE,
+	fixture,
+	lockName,
+	pluginDir,
+	readMedia,
+	uploadPhoto,
+	uuid,
+	withUploadLimits,
+	wp,
+} from './helpers.mjs';
 
 const storedPath = ( extension ) =>
 	new RegExp( `^/wp-content/uploads/journal/\\d{4}/\\d{2}/[0-9a-f]{32}\\.${ extension }$` );
@@ -141,6 +153,27 @@ test( 'a request without a file or with a bad id is rejected', async () => {
 	} );
 	assert.equal( response.status, 400 );
 	assert.equal( ( await response.json() ).code, 'invalid_id' );
+} );
+
+test( 'a photo over the server\'s upload limit is answered 413 and can be sent again once it fits', async () => {
+	// photo-large.jpg is about 80 KB.
+	const id = uuid();
+	const cases = [
+		[ 'the file is over upload_max_filesize', { file: '16K', body: '8M' } ],
+		[ 'the whole request is over post_max_size', { file: '8M', body: '16K' } ],
+	];
+	for ( const [ label, limits ] of cases ) {
+		const { limit, answer } = await withUploadLimits( limits, async () => ( {
+			limit: ( await api( 'GET', '/journal/v1/status' ) ).body.max_upload_bytes,
+			answer: await uploadPhoto( { id, file: 'photo-large.jpg' } ),
+		} ) );
+		assert.equal( limit, 16 * 1024, label );
+		assert.equal( answer.status, 413, label );
+		assert.equal( answer.body.code, 'photo_too_large', label );
+	}
+
+	const retry = await uploadPhoto( { id, file: 'photo-large.jpg' } );
+	assert.equal( retry.status, 201 );
 } );
 
 test( 'photo uploads need credentials and the right to publish', async () => {
