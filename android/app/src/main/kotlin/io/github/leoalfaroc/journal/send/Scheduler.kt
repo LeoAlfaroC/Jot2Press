@@ -77,10 +77,10 @@ class Scheduler(
 class SendWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val container = (applicationContext as JournalApp).container
-        val outcome = container.sender.run()
+        val result = if (container.sender.run() == Sender.Outcome.RETRY) Result.retry() else Result.success()
         // An entry becomes stuck by the passing of time alone, so the widget is told after every run.
-        container.refreshWidget()
-        return if (outcome == Sender.Outcome.RETRY) Result.retry() else Result.success()
+        container.redrawWidget()
+        return result
     }
 }
 

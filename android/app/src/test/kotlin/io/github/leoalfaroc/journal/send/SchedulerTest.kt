@@ -98,6 +98,22 @@ class SchedulerTest {
     }
 
     @Test
+    fun `a widget that cannot be redrawn does not change what the send job ends with`() = runTest {
+        world.widgetFailure = IllegalStateException("The widget is gone.")
+        world.connect()
+        world.server.enqueue(created())
+        world.write("Coffee")
+        world.scheduler.sync()
+        val send = sendJobs().single()
+
+        world.driver.setAllConstraintsMet(send.id)
+
+        assertEquals(WorkInfo.State.SUCCEEDED, finished(send.id).state)
+        assertTrue(world.entries().isEmpty())
+        assertEquals(1, world.widgetRefreshes)
+    }
+
+    @Test
     fun `a site that fails leaves the job to be retried`() = runTest {
         world.connect()
         world.server.enqueue(MockResponse.Builder().code(500).body("").build())

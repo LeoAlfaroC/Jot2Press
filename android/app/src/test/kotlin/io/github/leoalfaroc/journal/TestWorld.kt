@@ -56,6 +56,8 @@ class TestWorld(folder: File) {
     val apiFor: (Credentials) -> JournalApi = { HttpJournalApi(journalHttpClient(), it.copy(siteUrl = server.url("/").toString())) }
     val sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, deviceLocale = { Locale.ENGLISH })
     var widgetRefreshes = 0
+    /** When set, the widget redraw throws it. */
+    var widgetFailure: Exception? = null
     var unmetered = true
     val container: AppContainer
 
@@ -77,7 +79,10 @@ class TestWorld(folder: File) {
             apiFor = apiFor,
             scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
             onUnmeteredNetwork = { unmetered },
-            refreshWidget = { widgetRefreshes++ },
+            refreshWidget = {
+                widgetRefreshes++
+                widgetFailure?.let { throw it }
+            },
         )
         (context as JournalApp).container = container
     }
@@ -105,6 +110,7 @@ class TestWorld(folder: File) {
     fun close() {
         server.close()
         container.scope.cancel()
+        WorkManagerTestInitHelper.closeWorkDatabase()
         storeScope.cancel()
         db.close()
     }

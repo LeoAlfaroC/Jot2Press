@@ -18,6 +18,6 @@ open class JournalApp : Application() {
         // A safety net: whatever a killed process left unscheduled is scheduled again.
         container.scope.launch { container.scheduler.sync() }
         // The widget is redrawn whenever what it shows changes.
-        container.scope.launch { widgetStates(container).collect { container.refreshWidget() } }
+        container.scope.launch { widgetStates(container).collect { container.redrawWidget() } }
     }
 }

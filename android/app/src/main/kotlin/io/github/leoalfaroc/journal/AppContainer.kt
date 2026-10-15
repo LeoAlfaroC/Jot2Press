@@ -21,6 +21,7 @@ import io.github.leoalfaroc.journal.net.journalHttpClient
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
 import io.github.leoalfaroc.journal.widget.JournalWidget
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +50,17 @@ class AppContainer(
      * stores its draft before the next one reads it, however quickly one follows the other.
      */
     val captureWork = InOrder(scope)
+
+    /** Redraws the widget. A failed redraw only leaves it as it was: it must not end the caller. */
+    suspend fun redrawWidget() {
+        try {
+            refreshWidget()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The next change, or the next run of the sender, draws it again.
+        }
+    }
 }
 
 /** The wall clock, in whatever time zone the phone is in at the moment it is asked. */
