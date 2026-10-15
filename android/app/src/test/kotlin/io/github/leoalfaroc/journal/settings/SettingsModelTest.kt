@@ -218,7 +218,7 @@ class SettingsModelTest {
 
         val ui = ui()
         assertEquals("new secret", ui.form.password)
-        assertEquals(TestState.Idle, ui.form.test)
+        assertEquals(TestState.Passed("Connected with the earlier values. Test again to use these."), ui.form.test)
         assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
         assertTrue(ui.settings.configured)
     }

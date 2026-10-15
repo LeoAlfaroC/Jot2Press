@@ -53,6 +53,7 @@ const val GRACE_ERROR = "A whole number from 0 to $MAX_GRACE_SECONDS."
 const val PATTERN_ERROR = "Not a date pattern. It was not saved."
 const val URL_ERROR = "The site URL must be an https:// address."
 const val SIGN_IN_ERROR = "Enter the username and the application password."
+const val EARLIER_VALUES = "Connected with the earlier values. Test again to use these."
 const val REJECTED_ERROR = "The site rejected the username or the application password."
 
 /** The settings screen without its screen. */
@@ -109,7 +110,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 // Whatever waited for working credentials can go now.
                 container.scheduler.sync()
                 val passed = TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}.")
-                answer(typed) {
+                answerPassed(typed) {
                     it.copy(
                         revision = it.revision + 1,
                         siteUrl = signIn.siteUrl,
@@ -134,6 +135,11 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
     /** Applies the answer to a test, unless the person typed over the sign-in while it ran: then the answer is stale and the fields stay as typed. */
     private fun answer(typed: SettingsForm, change: (SettingsForm) -> SettingsForm) = form.update {
         if (it.siteUrl == typed.siteUrl && it.username == typed.username && it.password == typed.password) change(it) else it.copy(test = TestState.Idle)
+    }
+
+    /** A pass for values that were typed over: the earlier ones were stored, and the form says so. */
+    private fun answerPassed(typed: SettingsForm, change: (SettingsForm) -> SettingsForm) = form.update {
+        if (it.siteUrl == typed.siteUrl && it.username == typed.username && it.password == typed.password) change(it) else it.copy(test = TestState.Passed(EARLIER_VALUES))
     }
 
     /** The test state after an edit: a test still running stays so. */
