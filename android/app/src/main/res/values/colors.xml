@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The widget cannot read the Compose theme. These repeat LightColors in ui/Theme.kt. -->
+    <color name="widget_app">#14532D</color>
+    <color name="widget_sheet">#FFFFFF</color>
+</resources>

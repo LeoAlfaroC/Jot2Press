@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name is not here: Gradle writes it from appName in project.json. -->
+    <string name="widget_description">Write an entry in one tap.</string>
+</resources>

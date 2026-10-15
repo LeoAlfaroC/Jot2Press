@@ -6,6 +6,7 @@ import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import androidx.glance.appwidget.updateAll
 import androidx.room.Room
 import androidx.work.WorkManager
 import io.github.leoalfaroc.journal.data.CredentialStore
@@ -19,6 +20,7 @@ import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
+import io.github.leoalfaroc.journal.widget.JournalWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -78,5 +80,6 @@ fun realContainer(app: Application): AppContainer {
         apiFor = apiFor,
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
         onUnmeteredNetwork = { connectivity.activeNetwork != null && !connectivity.isActiveNetworkMetered },
+        refreshWidget = { JournalWidget().updateAll(app) },
     )
 }
