@@ -52,17 +52,17 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
 
     fun actions(openQueue: () -> Unit) = SettingsActions(
         openQueue = openQueue,
-        dismissCategoryNotice = { scope.launch { model.dismissCategoryNotice() } },
+        dismissCategoryNotice = { container.settingsWork.run { model.dismissCategoryNotice() } },
         editSiteUrl = model::editSiteUrl,
         editUsername = model::editUsername,
         editPassword = model::editPassword,
         testConnection = { scope.launch { model.testConnection() } },
-        editGrace = { scope.launch { model.editGrace(it) } },
-        setWifiOnly = { scope.launch { model.setWifiOnly(it) } },
-        chooseCategory = { scope.launch { model.chooseCategory(it) } },
-        setPostStatus = { scope.launch { model.setPostStatus(it) } },
-        setTitleLanguage = { scope.launch { model.setTitleLanguage(it) } },
-        editPattern = { scope.launch { model.editPattern(it) } },
+        editGrace = { container.settingsWork.run { model.editGrace(it) } },
+        setWifiOnly = { container.settingsWork.run { model.setWifiOnly(it) } },
+        chooseCategory = { container.settingsWork.run { model.chooseCategory(it) } },
+        setPostStatus = { container.settingsWork.run { model.setPostStatus(it) } },
+        setTitleLanguage = { container.settingsWork.run { model.setTitleLanguage(it) } },
+        editPattern = { container.settingsWork.run { model.editPattern(it) } },
     )
 
     fun retry(id: String) {

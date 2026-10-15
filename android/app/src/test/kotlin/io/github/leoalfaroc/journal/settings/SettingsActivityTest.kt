@@ -12,7 +12,9 @@ import io.github.leoalfaroc.journal.data.EntryState
 import io.github.leoalfaroc.journal.declaredAppName
 import io.github.leoalfaroc.journal.queue.EMPTY_MESSAGE
 import io.github.leoalfaroc.journal.send.Scheduler
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -53,6 +55,24 @@ class SettingsActivityTest {
             compose.onNodeWithContentDescription("Back").performClick()
             appears("Test connection")
         }
+    }
+
+    @Test
+    fun `two quick edits of the grace window are stored in the order they were typed`() {
+        val actions = SettingsViewModel(world.container).actions(openQueue = {})
+
+        actions.editGrace("1")
+        actions.editGrace("12")
+
+        val stored = runBlocking {
+            withTimeout(TIMEOUT) {
+                while (world.settings.get().graceSeconds != 12) delay(10)
+                // Nothing later may put the first edit back.
+                delay(100)
+                world.settings.get().graceSeconds
+            }
+        }
+        assertEquals(12, stored)
     }
 
     @Test

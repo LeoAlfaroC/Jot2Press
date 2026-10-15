@@ -51,6 +51,9 @@ class AppContainer(
      */
     val captureWork = InOrder(scope)
 
+    /** What the settings screen stores: two quick edits of a field are stored in the order they were typed. */
+    val settingsWork = InOrder(scope)
+
     /** Redraws the widget. A failed redraw only leaves it as it was: it must not end the caller. */
     suspend fun redrawWidget() {
         try {
