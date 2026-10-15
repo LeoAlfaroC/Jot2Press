@@ -76,8 +76,10 @@ class Sender(
             val entry = queue.nextPending() ?: return Outcome.DONE
             when (val result = apiFor(signIn).sendEntry(payload(entry, settings.get()))) {
                 is ApiResult.Ok -> {
-                    queue.markSent(entry.id)
+                    // The fallback is recorded first: if the process dies between the two, the resend finds the entry
+                    // still pending and the plugin answers it again.
                     result.value.categoryFallback?.let { settings.categoryFellBack(it) }
+                    queue.markSent(entry.id)
                 }
                 // No answer says nothing about the site, so nothing is recorded.
                 is ApiResult.Unreachable -> return Outcome.RETRY
