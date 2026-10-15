@@ -11,9 +11,14 @@ import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.PostStatus
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import mockwebserver3.Dispatcher
 import mockwebserver3.MockResponse
+import mockwebserver3.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,6 +29,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
 
 @RunWith(AndroidJUnit4::class)
 class SettingsModelTest {
@@ -49,6 +55,14 @@ class SettingsModelTest {
         model.editSiteUrl(site)
         model.editUsername(username)
         model.editPassword(password)
+    }
+
+    /** Answers with `answer` only once `gate` is open, so that a test can type while the request is in flight. */
+    private fun gated(gate: CountDownLatch, answer: MockResponse) = object : Dispatcher() {
+        override fun dispatch(request: RecordedRequest): MockResponse {
+            gate.await()
+            return answer
+        }
     }
 
     @Test
@@ -183,6 +197,52 @@ class SettingsModelTest {
         model.editSiteUrl("example.com")
 
         assertEquals(TestState.Idle, ui().form.test)
+    }
+
+    @Test
+    fun `a password typed while the connection is tested is kept, and the tested one is stored`() = runTest {
+        val gate = CountDownLatch(1)
+        world.server.dispatcher = gated(gate, status())
+        model.load()
+        type()
+
+        val test = launch { model.testConnection() }
+        try {
+            withContext(Dispatchers.IO) { world.server.takeRequest() }
+            model.editPassword("new secret")
+            assertEquals(TestState.Running, ui().form.test)
+        } finally {
+            gate.countDown()
+        }
+        test.join()
+
+        val ui = ui()
+        assertEquals("new secret", ui.form.password)
+        assertEquals(TestState.Idle, ui.form.test)
+        assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
+        assertTrue(ui.settings.configured)
+    }
+
+    @Test
+    fun `a password typed while a refused connection is tested is kept, with no message about the old one`() = runTest {
+        val gate = CountDownLatch(1)
+        world.server.dispatcher = gated(gate, error(401, "incorrect_password", "The provided password is an invalid application password."))
+        model.load()
+        type()
+
+        val test = launch { model.testConnection() }
+        try {
+            withContext(Dispatchers.IO) { world.server.takeRequest() }
+            model.editPassword("new secret")
+        } finally {
+            gate.countDown()
+        }
+        test.join()
+
+        val ui = ui()
+        assertEquals("new secret", ui.form.password)
+        assertEquals(TestState.Idle, ui.form.test)
+        assertNull(world.credentials.get())
     }
 
     @Test

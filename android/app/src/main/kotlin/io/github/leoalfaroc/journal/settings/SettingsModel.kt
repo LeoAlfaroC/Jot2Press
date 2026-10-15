@@ -85,9 +85,10 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
         }
     }
 
-    fun editSiteUrl(text: String) = form.update { it.copy(siteUrl = text, test = TestState.Idle) }
-    fun editUsername(text: String) = form.update { it.copy(username = text, test = TestState.Idle) }
-    fun editPassword(text: String) = form.update { it.copy(password = text, test = TestState.Idle) }
+    // Typing while a test runs keeps the test running, so the button stays disabled and a second test cannot start.
+    fun editSiteUrl(text: String) = form.update { it.copy(siteUrl = text, test = it.settled()) }
+    fun editUsername(text: String) = form.update { it.copy(username = text, test = it.settled()) }
+    fun editPassword(text: String) = form.update { it.copy(password = text, test = it.settled()) }
 
     /**
      * Calls the status endpoint with what is typed. Only credentials that worked are stored:
@@ -107,26 +108,36 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 settings.connectionSucceeded(result.value)
                 // Whatever waited for working credentials can go now.
                 container.scheduler.sync()
-                form.update {
+                val passed = TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}.")
+                answer(typed) {
                     it.copy(
                         revision = it.revision + 1,
                         siteUrl = signIn.siteUrl,
                         username = signIn.username,
                         password = signIn.password,
-                        test = TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}."),
+                        test = passed,
                     )
                 }
             }
-            is ApiResult.Refused -> failed(
-                when {
+            is ApiResult.Refused -> {
+                val message = when {
                     result.status == 401 -> REJECTED_ERROR
                     result.code == "rest_no_route" -> Sender.PLUGIN_MISSING
                     else -> result.message
-                },
-            )
-            is ApiResult.Unreachable -> failed("Could not reach the site: ${result.reason}")
+                }
+                answer(typed) { it.copy(test = TestState.Failed(message)) }
+            }
+            is ApiResult.Unreachable -> answer(typed) { it.copy(test = TestState.Failed("Could not reach the site: ${result.reason}")) }
         }
     }
+
+    /** Applies the answer to a test, unless the person typed over the sign-in while it ran: then the answer is stale and the fields stay as typed. */
+    private fun answer(typed: SettingsForm, change: (SettingsForm) -> SettingsForm) = form.update {
+        if (it.siteUrl == typed.siteUrl && it.username == typed.username && it.password == typed.password) change(it) else it.copy(test = TestState.Idle)
+    }
+
+    /** The test state after an edit: a test still running stays so. */
+    private fun SettingsForm.settled(): TestState = if (test == TestState.Running) test else TestState.Idle
 
     /** Stores the grace window when it is a number from 0 to 600; otherwise keeps the stored one and says why. */
     suspend fun editGrace(text: String) {
