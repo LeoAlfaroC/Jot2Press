@@ -13,5 +13,15 @@
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.Journal"
-        android:usesCleartextTraffic="false" />
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".capture.CaptureActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Journal.Capture"
+            android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
+    </application>
 </manifest>
