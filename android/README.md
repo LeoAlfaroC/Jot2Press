@@ -47,10 +47,10 @@ The name on the launcher, on the settings screen and in the list of widgets is `
 
 ```bash
 android/gradlew -p android :app:testDebugUnitTest           # on the computer, no device needed
-android/gradlew -p android :app:connectedDebugAndroidTest   # on a connected phone or a running emulator
+android/gradlew -p android :app:connectedDebugAndroidTest   # on a running emulator, not on the phone you journal on
 ```
 
-The first command tests everything except the encryption of the credentials, which needs the Android Keystore and therefore a device. The second tests that.
+The first command tests everything except the encryption of the credentials, which needs the Android Keystore and therefore a device. The second tests that. Run it on an emulator: the debug and test APKs replace the app that is installed there, and a connected run can remove the app and its data.
 
 ## Privacy
 
