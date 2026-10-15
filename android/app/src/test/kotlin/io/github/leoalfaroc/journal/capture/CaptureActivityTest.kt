@@ -73,6 +73,17 @@ class CaptureActivityTest {
     }
 
     @Test
+    fun `pausing alone keeps the text as the draft`() {
+        open().use {
+            compose.onNode(hasSetTextAction()).performTextInput("Walked back along the seafront")
+            // Paused but not stopped: Android may wait seconds before it stops a dialog.
+            it.moveToState(Lifecycle.State.STARTED)
+            compose.waitUntil(TIMEOUT) { entries().isNotEmpty() }
+        }
+        assertEquals("Walked back along the seafront", entries().single().text)
+    }
+
+    @Test
     fun `a dialog opened while the one before is still saving finds what that one held`() {
         val slow = CompletableDeferred<Unit>()
         open().use {

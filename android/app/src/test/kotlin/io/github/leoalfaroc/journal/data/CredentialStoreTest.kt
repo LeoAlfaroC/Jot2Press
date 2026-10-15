@@ -11,6 +11,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -18,6 +19,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import java.util.Base64
 
 @RunWith(AndroidJUnit4::class)
 class CredentialStoreTest {
@@ -42,9 +44,10 @@ class CredentialStoreTest {
 
         assertEquals(mine, credentials.get())
         val raw = store.data.first()[stringPreferencesKey("credentials")]!!
-        assertFalse(mine.password in raw)
-        assertFalse(mine.username in raw)
-        assertFalse("example.com" in raw)
+        val plain = """{"site_url":"https://example.com/blog","username":"leó","password":"abcd EFGH 1234 ñandú"}""".toByteArray(Charsets.UTF_8)
+        // What is stored is what the box made of the plain JSON, and not the JSON itself.
+        assertArrayEquals(box.seal(plain), Base64.getDecoder().decode(raw))
+        assertFalse(plain.contentEquals(Base64.getDecoder().decode(raw)))
     }
 
     @Test

@@ -264,6 +264,25 @@ class CaptureModelTest {
     }
 
     @Test
+    fun `reopening a taken-back entry and saving it unchanged keeps its id and its time`() = runTest {
+        opened().apply { type("Tea"); send() }
+        val sent = world.entries().single()
+        world.clock.advance(Duration.ofSeconds(10))
+        val first = opened()
+        first.editLast()
+        first.saveDraft()
+
+        val again = opened()
+        assertEquals("Tea", again.ui.value.text)
+        again.saveDraft()
+
+        val entry = world.entries().single()
+        assertEquals(EntryState.DRAFT, entry.state)
+        assertEquals(sent.id, entry.id)
+        assertEquals(sent.writtenAt, entry.writtenAt)
+    }
+
+    @Test
     fun `emptying the editor lets go of an entry taken back, and what is typed next is a new entry`() = runTest {
         opened().apply { type("Tea"); send() }
         val tea = world.entries().single()
