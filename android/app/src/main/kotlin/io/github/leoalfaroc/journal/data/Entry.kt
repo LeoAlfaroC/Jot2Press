@@ -34,6 +34,11 @@ data class Entry(
     val lastError: String? = null,
     /** Epoch milliseconds since which the server has been failing on this entry. */
     val failingSince: Long? = null,
+    /** Where the entry was written, when location is attached (plan 2b). */
+    val lat: Double? = null,
+    val lng: Double? = null,
+    /** The plugin's error code for the last refusal, as `unknown_photo`. */
+    val lastErrorCode: String? = null,
 )
 
 /** A pending entry is stuck once the server has failed on it for this long. */

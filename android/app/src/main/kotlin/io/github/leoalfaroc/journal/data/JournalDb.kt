@@ -2,9 +2,12 @@ package io.github.leoalfaroc.journal.data
 
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.RoomDatabase
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -37,12 +40,52 @@ interface EntryDao {
     suspend fun delete(id: String)
 }
 
-@Database(entities = [Entry::class], version = 1, exportSchema = true)
+@Dao
+interface PhotoDao {
+    @Query("SELECT * FROM photos WHERE entryId = :entryId ORDER BY position")
+    suspend fun of(entryId: String): List<Photo>
+
+    @Query("SELECT file FROM photos")
+    suspend fun files(): List<String>
+
+    @Query("SELECT entryId, COUNT(*) AS count FROM photos GROUP BY entryId")
+    fun observeCounts(): Flow<List<PhotoCount>>
+
+    @Insert
+    suspend fun insert(photos: List<Photo>)
+
+    @Query("DELETE FROM photos WHERE entryId = :entryId")
+    suspend fun deleteOf(entryId: String)
+
+    @Query("UPDATE photos SET uploaded = 1 WHERE id = :id")
+    suspend fun markUploaded(id: String)
+
+    @Query("UPDATE photos SET uploaded = 0 WHERE entryId = :entryId")
+    suspend fun clearUploaded(entryId: String)
+}
+
+@Database(entities = [Entry::class, Photo::class], version = 2, exportSchema = true)
 abstract class JournalDb : RoomDatabase() {
     abstract fun entries(): EntryDao
+    abstract fun photos(): PhotoDao
 
     companion object {
         /** Permanent: the queue of an installed app is found under this name. */
         const val NAME = "journal.db"
+
+        /** Adds photos, and the columns for location and for the code of a refusal. Keeps every entry. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `entries` ADD COLUMN `lat` REAL")
+                db.execSQL("ALTER TABLE `entries` ADD COLUMN `lng` REAL")
+                db.execSQL("ALTER TABLE `entries` ADD COLUMN `lastErrorCode` TEXT")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `photos` (`id` TEXT NOT NULL, `entryId` TEXT NOT NULL, `position` INTEGER NOT NULL, " +
+                        "`file` TEXT NOT NULL, `uploaded` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`), " +
+                        "FOREIGN KEY(`entryId`) REFERENCES `entries`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_photos_entryId` ON `photos` (`entryId`)")
+            }
+        }
     }
 }
