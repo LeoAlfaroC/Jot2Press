@@ -146,6 +146,14 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun `unreadable credentials show the line, and not the rejected-credentials one`() {
+        show(fresh.copy(form = form.copy(unreadable = true), settings = connected.copy(authError = true)))
+
+        compose.onNodeWithText(UNREADABLE_LINE).assertExists()
+        compose.onNodeWithText(AUTH_ERROR_LINE).assertDoesNotExist()
+    }
+
+    @Test
     fun `the grace window and the Wi-Fi switch go to the model`() {
         show(fresh)
 

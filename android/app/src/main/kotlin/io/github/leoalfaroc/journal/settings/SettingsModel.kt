@@ -35,6 +35,8 @@ data class SettingsForm(
     val editing: Boolean = false,
     /** Credentials are stored, so Cancel has something to go back to. */
     val hasSaved: Boolean = false,
+    /** Credentials were saved, but this phone can no longer decrypt them: they have to be entered again. */
+    val unreadable: Boolean = false,
     val siteUrl: String = "",
     val username: String = "",
     val password: String = "",
@@ -94,6 +96,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 revision = it.revision + 1,
                 editing = signIn == null,
                 hasSaved = signIn != null,
+                unreadable = signIn == null && kept.configured,
                 siteUrl = signIn?.siteUrl.orEmpty(),
                 username = signIn?.username.orEmpty(),
                 password = signIn?.password.orEmpty(),
@@ -147,6 +150,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 revision = it.revision + 1,
                 editing = false,
                 hasSaved = true,
+                unreadable = false,
                 siteUrl = signIn.siteUrl,
                 username = signIn.username,
                 password = signIn.password,

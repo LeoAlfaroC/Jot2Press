@@ -74,6 +74,7 @@ class SettingsActions(
     val editPattern: (String) -> Unit = {},
 )
 
+const val UNREADABLE_LINE = "The saved sign-in can no longer be read on this phone. Enter it again."
 const val AUTH_ERROR_LINE = "The site rejected these credentials. Entries wait on the phone. Edit them and save again."
 const val EDITING_LINE = "Sending uses the saved values until you tap Save."
 const val SAVED_LINE = "Saved."
@@ -124,6 +125,7 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
             Text("Connection", Modifier.weight(1f).semantics { heading() }, style = JournalType.send, color = colors.app)
             if (!form.editing) TextAction("Edit", actions.edit, flush = Alignment.End)
         }
+        if (form.unreadable) Line(UNREADABLE_LINE, colors.danger)
         if (form.editing) {
             Field("Site URL", form.siteUrl, form.revision, actions.editSiteUrl, keyboard = KeyboardType.Uri, enabled = !testing)
             Field("Username", form.username, form.revision, actions.editUsername, enabled = !testing)
@@ -138,7 +140,8 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
             Shown("Application password", HIDDEN_PASSWORD)
         }
         Action(if (testing) "Testing…" else "Test connection", actions.testConnection, Modifier.fillMaxWidth(), enabled = !testing)
-        if (settings.authError) Line(AUTH_ERROR_LINE, colors.danger)
+        // Unreadable credentials also hold the queue as rejected ones do; their own line above says what happened.
+        if (settings.authError && !form.unreadable) Line(AUTH_ERROR_LINE, colors.danger)
         when (val test = form.test) {
             is TestState.Passed -> Line(test.message)
             is TestState.Failed -> Line(test.message, colors.danger)

@@ -65,13 +65,22 @@ class Sender(
 
     private val oneAtATime = Mutex()
 
+    /**
+     * No credentials to send with. After a Save this means they can no longer be decrypted (the Keystore key was lost):
+     * the user fixes it the same way as a rejected sign-in, by saving them again.
+     */
+    private suspend fun unreadable(): Outcome {
+        if (settings.get().configured) settings.setAuthError(true)
+        return Outcome.HELD
+    }
+
     suspend fun run(): Outcome = oneAtATime.withLock { drain() }
 
     private suspend fun drain(): Outcome {
         while (true) {
             // Read again for every entry: `Save` may have stored other credentials since the last one.
             if (settings.get().authError) return Outcome.HELD
-            val signIn = credentials() ?: return Outcome.HELD
+            val signIn = credentials() ?: return unreadable()
             queue.promoteDue()
             val entry = queue.nextPending() ?: return Outcome.DONE
             when (val result = apiFor(signIn).sendEntry(payload(entry, settings.get()))) {

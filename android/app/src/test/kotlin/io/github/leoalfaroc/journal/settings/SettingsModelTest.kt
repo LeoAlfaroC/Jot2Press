@@ -66,6 +66,35 @@ class SettingsModelTest {
     }
 
     @Test
+    fun `saved credentials that can no longer be read open as empty fields, with a line saying so`() = runTest {
+        world.connect()
+        world.box.broken = true
+
+        model.load()
+
+        val form = ui().form
+        assertTrue(form.editing)
+        assertFalse(form.hasSaved)
+        assertTrue(form.unreadable)
+        assertEquals("", form.siteUrl)
+    }
+
+    @Test
+    fun `saving again clears the line`() = runTest {
+        world.connect()
+        world.box.broken = true
+        model.load()
+        world.box.broken = false
+        model.editSiteUrl("https://example.com/blog")
+        model.editUsername("leo")
+        model.editPassword("abcd efgh")
+
+        model.save()
+
+        assertFalse(ui().form.unreadable)
+    }
+
+    @Test
     fun `before anything is set up the fields are empty, open for typing, and the defaults show`() = runTest {
         model.load()
 

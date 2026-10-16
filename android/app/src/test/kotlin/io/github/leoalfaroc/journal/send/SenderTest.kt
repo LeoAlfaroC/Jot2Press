@@ -249,6 +249,30 @@ class SenderTest {
     }
 
     @Test
+    fun `saved credentials that can no longer be read hold the queue as a rejected sign-in`() = runTest {
+        pending("Coffee")
+        sender
+        settings.credentialsSaved()
+        saved = null
+
+        assertEquals(Sender.Outcome.HELD, sender.run())
+
+        assertTrue(settings.get().authError)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
+    fun `with no credentials ever saved, the queue waits without an alert`() = runTest {
+        pending("Coffee")
+        sender
+        saved = null
+
+        assertEquals(Sender.Outcome.HELD, sender.run())
+
+        assertFalse(settings.get().authError)
+    }
+
+    @Test
     fun `rejected credentials stop everything and keep every entry`() = runTest {
         for (status in listOf(401, 403)) {
             val entry = pending("Coffee $status")
