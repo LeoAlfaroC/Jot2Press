@@ -32,6 +32,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
 
 /** The dialog as the widget opens it, on the real queue. */
 @RunWith(AndroidJUnit4::class)
@@ -181,6 +182,34 @@ class CaptureActivityTest {
     }
 
     @Test
+    fun `Send tapped while a chosen photo is still being copied waits for it`() {
+        open().use { scenario ->
+            compose.onNode(hasSetTextAction()).performTextInput("Coffee with Ana")
+            compose.onNodeWithContentDescription("Choose photos").performClick()
+            lateinit var picker: Intent
+            scenario.onActivity { picker = shadowOf(it).nextStartedActivityForResult.intent }
+            val uri = Uri.parse("content://media/picker/0/1")
+            val release = CountDownLatch(1)
+            shadowOf(ApplicationProvider.getApplicationContext<Context>().contentResolver).registerInputStreamSupplier(uri) {
+                release.await()
+                jpeg.inputStream()
+            }
+            scenario.onActivity { shadowOf(it).receiveResult(picker, Activity.RESULT_OK, Intent().setData(uri)) }
+
+            compose.onNodeWithText("Send").performClick()
+            release.countDown()
+            val settled = CompletableDeferred<Unit>()
+            world.container.captureWork.run { settled.complete(Unit) }
+            compose.waitUntil(TIMEOUT) { settled.isCompleted }
+
+            val entry = entries().single()
+            assertEquals(1, runBlocking { world.queue.photosOf(entry.id) }.size)
+            val kept = runBlocking { world.queue.photoFileNames() }
+            assertEquals(kept, world.photoFiles.file("").list().orEmpty().toSet())
+        }
+    }
+
+    @Test
     fun `a photo taken with the camera joins the draft and is saved to the gallery`() {
         open().use { scenario ->
             compose.onNodeWithContentDescription("Take photo").performClick()
@@ -208,7 +237,8 @@ class CaptureActivityTest {
 
             scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
 
-            compose.waitUntil(TIMEOUT) { world.galleryAttempts == listOf(target.lastPathSegment) }
+            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+            assertEquals(listOf(target.lastPathSegment), world.galleryAttempts)
             assertEquals(listOf(target.lastPathSegment), draftPhotos().map { it.file })
             assertTrue(world.photoFiles.file(target.lastPathSegment!!).exists())
         }

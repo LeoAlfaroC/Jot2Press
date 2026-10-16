@@ -106,13 +106,13 @@ class CaptureViewModel(
         work.run { model.refresh() }
     }
 
-    /** Copies what the picker returned, then adds it to the editor. */
+    /**
+     * Copies what the picker returned, then adds it to the editor. The copying holds its place in `work` from the moment
+     * of the pick, so a `Send` or a closing dialog that follows waits for the photos instead of passing them by.
+     */
     fun addPicked(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val copies = uris.mapNotNull(intake::copy)
-            work.run { model.addPhotos(copies) }
-        }
+        work.run { model.addPhotos(withContext(Dispatchers.IO) { uris.mapNotNull(intake::copy) }) }
     }
 
     fun newCameraPhoto(): DraftPhoto = intake.newCameraPhoto()
@@ -123,12 +123,13 @@ class CaptureViewModel(
     fun addTaken(id: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val photo = intake.taken(intake.cameraPhoto(id)) ?: return@launch
-            work.run { model.addPhotos(listOf(photo)) }
+            // Before the photo joins the editor: a full editor deletes the copy, which must not happen under the gallery's read.
             try {
                 gallery.save(files.file(photo.file))
             } catch (e: Exception) {
                 // The gallery copy is a convenience: the entry has its own.
             }
+            work.run { model.addPhotos(listOf(photo)) }
         }
     }
 
@@ -191,12 +192,15 @@ class CaptureActivity : ComponentActivity() {
                         fix = { leaveFor(Intent(this, SettingsActivity::class.java)) },
                         review = { leaveFor(SettingsActivity.queueIntent(this)) },
                         takePhoto = {
-                            val photo = viewModel.newCameraPhoto()
-                            shooting = photo.id
-                            try {
-                                camera.launch(FileProvider.getUriForFile(this, "$packageName.photos", viewModel.cameraTarget(photo)))
-                            } catch (e: ActivityNotFoundException) {
-                                shooting = null
+                            // A second tap before the camera covers the dialog would lose the first shot's id.
+                            if (shooting == null) {
+                                val photo = viewModel.newCameraPhoto()
+                                shooting = photo.id
+                                try {
+                                    camera.launch(FileProvider.getUriForFile(this, "$packageName.photos", viewModel.cameraTarget(photo)))
+                                } catch (e: ActivityNotFoundException) {
+                                    shooting = null
+                                }
                             }
                         },
                         choosePhotos = {
