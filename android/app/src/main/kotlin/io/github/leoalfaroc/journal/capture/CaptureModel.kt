@@ -1,13 +1,18 @@
 package io.github.leoalfaroc.journal.capture
 
+import io.github.leoalfaroc.journal.Trouble
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.data.time
 import io.github.leoalfaroc.journal.send.Scheduler
+import io.github.leoalfaroc.journal.trouble
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -41,6 +46,8 @@ data class CaptureUi(
     val nextChangeAt: Long? = null,
     /** The dialog is done and should close. */
     val closed: Boolean = false,
+    /** What the notice on top asks the user to fix, or null for no notice. */
+    val trouble: Trouble? = null,
 ) {
     val hasContent: Boolean get() = text.isNotBlank()
     val canSend: Boolean get() = hasContent && !confirmingDiscard
@@ -61,6 +68,11 @@ class CaptureModel(
     val ui: StateFlow<CaptureUi> = state.asStateFlow()
 
     private val mutex = Mutex()
+
+    /** What needs fixing, as the queue and the settings change while the dialog is open. */
+    val trouble: Flow<Trouble?> = combine(queue.observe(), settings.flow) { entries, settings ->
+        trouble(entries, settings, clock.millis())
+    }.distinctUntilChanged()
 
     /** Loads the draft, if one was left. */
     suspend fun open() = mutex.withLock {

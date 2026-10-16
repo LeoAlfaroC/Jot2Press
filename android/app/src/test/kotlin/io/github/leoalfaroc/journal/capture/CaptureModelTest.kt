@@ -3,8 +3,10 @@ package io.github.leoalfaroc.journal.capture
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.NetworkType
 import io.github.leoalfaroc.journal.TestWorld
+import io.github.leoalfaroc.journal.Trouble
 import io.github.leoalfaroc.journal.data.EntryState
 import io.github.leoalfaroc.journal.send.Scheduler
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -331,5 +333,18 @@ class CaptureModelTest {
         assertNull(model.ui.value.lastEntry)
         assertEquals("Draft text", model.ui.value.text)
         assertTrue(world.entries().isEmpty())
+    }
+
+    @Test
+    fun `what needs fixing follows the queue and the settings`() = runTest {
+        val model = opened()
+        assertNull(model.trouble.first())
+
+        val entry = world.write("Coffee")
+        world.queue.markFailed(entry.id, "Sorry, you are not allowed to create posts.")
+        assertEquals(Trouble.NotSent(1, "Sorry, you are not allowed to create posts."), model.trouble.first())
+
+        world.settings.setAuthError(true)
+        assertEquals(Trouble.SignInRejected, model.trouble.first())
     }
 }

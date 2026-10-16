@@ -12,8 +12,8 @@ class QueueFactsTest {
     private val now = 1_800_000_000_000L
     private var ids = 0
 
-    private fun entry(state: EntryState, failingSince: Long? = null) =
-        Entry(id = "id-${++ids}", text = "Coffee", state = state, failingSince = failingSince)
+    private fun entry(state: EntryState, failingSince: Long? = null, lastError: String? = null) =
+        Entry(id = "id-${++ids}", text = "Coffee", state = state, failingSince = failingSince, lastError = lastError)
 
     private fun facts(vararg entries: Entry) = queueFacts(entries.toList(), now)
 
@@ -64,5 +64,39 @@ class QueueFactsTest {
 
         assertEquals(WidgetState(failed = 2), widgetState(facts(entry(EntryState.FAILED), stuck, entry(EntryState.PENDING)), Settings()))
         assertEquals(WidgetState(signInRejected = true), widgetState(facts(entry(EntryState.PENDING)), Settings(authError = true)))
+    }
+
+    @Test
+    fun `there is nothing to fix while entries only wait`() {
+        val waiting = listOf(entry(EntryState.DRAFT), entry(EntryState.GRACE), entry(EntryState.PENDING, failingSince = now - 1, lastError = "Bad gateway"))
+        assertEquals(null, trouble(waiting, Settings(configured = true), now))
+    }
+
+    @Test
+    fun `one entry that could not be sent comes with what the site answered`() {
+        val refused = entry(EntryState.FAILED, lastError = "Sorry, you are not allowed to create posts.")
+        assertEquals(Trouble.NotSent(1, "Sorry, you are not allowed to create posts."), trouble(listOf(refused), Settings(configured = true), now))
+
+        val stuck = entry(EntryState.PENDING, failingSince = now - 2 * STUCK_AFTER_MILLIS, lastError = "Bad gateway")
+        assertEquals(Trouble.NotSent(1, "Bad gateway"), trouble(listOf(stuck), Settings(configured = true), now))
+    }
+
+    @Test
+    fun `several are only counted, their reasons are in the queue`() {
+        val entries = listOf(entry(EntryState.FAILED, lastError = "A"), entry(EntryState.PENDING, failingSince = now - 2 * STUCK_AFTER_MILLIS, lastError = "B"))
+        assertEquals(Trouble.NotSent(2, null), trouble(entries, Settings(configured = true), now))
+    }
+
+    @Test
+    fun `a rejected sign-in comes before entries that could not be sent`() {
+        val entries = listOf(entry(EntryState.FAILED, lastError = "A"))
+        assertEquals(Trouble.SignInRejected, trouble(entries, Settings(configured = true, authError = true), now))
+    }
+
+    @Test
+    fun `the red mark shows the same as the widget's badge`() {
+        assertEquals("!", Trouble.SignInRejected.mark)
+        assertEquals("3", Trouble.NotSent(3, null).mark)
+        assertEquals("99+", Trouble.NotSent(120, null).mark)
     }
 }

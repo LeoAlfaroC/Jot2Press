@@ -1,5 +1,6 @@
 package io.github.leoalfaroc.journal.capture
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,9 +17,14 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewModelScope
 import io.github.leoalfaroc.journal.InOrder
 import io.github.leoalfaroc.journal.JournalApp
+import io.github.leoalfaroc.journal.Trouble
+import io.github.leoalfaroc.journal.settings.SettingsActivity
 import io.github.leoalfaroc.journal.ui.JournalTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -28,9 +34,13 @@ import kotlinx.coroutines.launch
  */
 class CaptureViewModel(private val model: CaptureModel, private val work: InOrder) : ViewModel() {
     val ui = model.ui
+
+    /** Kept apart from `ui`, which must answer typing at once: the notice can follow a moment later. */
+    val trouble: StateFlow<Trouble?> = model.trouble.stateIn(viewModelScope, SharingStarted.Eagerly, null)
     private var saving: Job? = null
 
-    val actions = CaptureActions(
+    /** [fix] and [review] leave the dialog for settings and for the queue. */
+    fun actions(fix: () -> Unit, review: () -> Unit) = CaptureActions(
         type = { text ->
             model.type(text)
             saving?.cancel()
@@ -54,6 +64,8 @@ class CaptureViewModel(private val model: CaptureModel, private val work: InOrde
         askDeleteLast = model::askDeleteLast,
         confirmDeleteLast = { work.run { model.confirmDeleteLast() } },
         refresh = { refresh() },
+        fix = fix,
+        review = review,
     )
 
     init {
@@ -97,10 +109,18 @@ class CaptureActivity : ComponentActivity() {
         setContent {
             JournalTheme {
                 val ui by viewModel.ui.collectAsStateWithLifecycle()
+                val trouble by viewModel.trouble.collectAsStateWithLifecycle()
                 LaunchedEffect(ui.closed) { if (ui.closed) finish() }
-                CaptureScreen(ui, viewModel.actions, now = remember { { clock.millis() } }, onDismiss = ::finish)
+                val actions = remember { viewModel.actions(fix = { leaveFor(Intent(this, SettingsActivity::class.java)) }, review = { leaveFor(SettingsActivity.queueIntent(this)) }) }
+                CaptureScreen(ui.copy(trouble = trouble), actions, now = remember { { clock.millis() } }, onDismiss = ::finish)
             }
         }
+    }
+
+    /** Settings opens in the app's own task, not in the dialog's. Pausing keeps the text as the draft. */
+    private fun leaveFor(intent: Intent) {
+        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        finish()
     }
 
     override fun onStart() {

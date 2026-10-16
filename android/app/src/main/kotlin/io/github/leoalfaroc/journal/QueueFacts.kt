@@ -49,3 +49,25 @@ fun widgetState(facts: QueueFacts, settings: Settings): WidgetState = WidgetStat
     signInRejected = settings.authError,
     configured = settings.configured,
 )
+
+/** What the capture dialog's notice tells the user to fix. Only one at a time: the same one the widget's badge shows. */
+sealed interface Trouble {
+    /** What the red mark beside the notice shows, as on the widget's badge. */
+    val mark: String
+
+    /** Nothing is sent until the credentials are fixed, so this comes first. */
+    data object SignInRejected : Trouble {
+        override val mark = "!"
+    }
+
+    /** Entries the site refused, and entries stuck on server errors. [reason] is what the site answered, given for one entry only. */
+    data class NotSent(val count: Int, val reason: String?) : Trouble {
+        override val mark get() = if (count > 99) "99+" else count.toString()
+    }
+}
+
+fun trouble(entries: List<Entry>, settings: Settings, now: Long): Trouble? {
+    if (settings.authError) return Trouble.SignInRejected
+    val notSent = entries.filter { it.state == EntryState.FAILED || it.isStuck(now) }
+    return if (notSent.isEmpty()) null else Trouble.NotSent(notSent.size, notSent.singleOrNull()?.lastError)
+}

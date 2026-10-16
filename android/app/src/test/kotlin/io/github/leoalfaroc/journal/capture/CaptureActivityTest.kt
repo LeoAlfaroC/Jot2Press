@@ -11,14 +11,18 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.journal.TestWorld
 import io.github.leoalfaroc.journal.data.EntryState
+import io.github.leoalfaroc.journal.settings.SettingsActivity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 /** The dialog as the widget opens it, on the real queue. */
 @RunWith(AndroidJUnit4::class)
@@ -52,6 +56,45 @@ class CaptureActivityTest {
             val entry = entries().single()
             assertEquals(EntryState.GRACE, entry.state)
             assertEquals("Coffee with Ana", entry.text)
+        }
+    }
+
+    @Test
+    fun `a rejected sign-in is noticed, and Fix opens settings, keeping the text as the draft`() {
+        runBlocking { world.settings.setAuthError(true) }
+        open().use { scenario ->
+            lateinit var dialog: CaptureActivity
+            scenario.onActivity { dialog = it }
+            compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasText(SIGN_IN_NOTICE)).fetchSemanticsNodes().isNotEmpty() }
+
+            compose.onNode(hasSetTextAction()).performTextInput("Coffee")
+            compose.onNodeWithText("Fix").performClick()
+
+            compose.waitUntil(TIMEOUT) { dialog.isFinishing }
+            val opened = shadowOf(dialog).nextStartedActivity
+            assertEquals(SettingsActivity::class.java.name, opened.component?.className)
+            assertFalse(opened.getBooleanExtra(SettingsActivity.OPEN_QUEUE, false))
+        }
+        compose.waitUntil(TIMEOUT) { entries().isNotEmpty() }
+        assertEquals("Coffee", entries().single().text)
+    }
+
+    @Test
+    fun `entries that could not be sent are noticed while the dialog is open, and Review opens the queue`() {
+        open().use { scenario ->
+            lateinit var dialog: CaptureActivity
+            scenario.onActivity { dialog = it }
+            runBlocking {
+                val entry = world.write("Coffee")
+                world.queue.markFailed(entry.id, "Sorry, you are not allowed to create posts.")
+            }
+            compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasText("1 entry could not be sent.")).fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithText("Sorry, you are not allowed to create posts.").assertExists()
+
+            compose.onNodeWithText("Review").performClick()
+
+            compose.waitUntil(TIMEOUT) { dialog.isFinishing }
+            assertTrue(shadowOf(dialog).nextStartedActivity.getBooleanExtra(SettingsActivity.OPEN_QUEUE, false))
         }
     }
 

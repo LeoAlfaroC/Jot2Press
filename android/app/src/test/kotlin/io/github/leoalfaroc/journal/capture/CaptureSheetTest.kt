@@ -3,6 +3,7 @@ package io.github.leoalfaroc.journal.capture
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -11,9 +12,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.leoalfaroc.journal.Trouble
 import io.github.leoalfaroc.journal.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.journal.ui.JournalTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +37,8 @@ class CaptureSheetTest {
         askDeleteLast = { calls += "askDeleteLast" },
         confirmDeleteLast = { calls += "confirmDeleteLast" },
         refresh = { calls += "refresh" },
+        fix = { calls += "fix" },
+        review = { calls += "review" },
     )
     private val blank = CaptureUi(ready = true, day = LocalDate.of(2026, 10, 11))
     private val coffee = LastEntry(id = "id-1", time = "14:32", excerpt = "Coffee with Ana")
@@ -141,5 +146,49 @@ class CaptureSheetTest {
         assertEquals(emptyList<String>(), calls)
         compose.mainClock.advanceTimeBy(2_000)
         assertEquals(listOf("refresh"), calls)
+    }
+
+    @Test
+    fun `while nothing needs fixing there is no notice`() {
+        show(blank)
+        compose.onNodeWithText("Fix").assertDoesNotExist()
+        compose.onNodeWithText("Review").assertDoesNotExist()
+    }
+
+    @Test
+    fun `a rejected sign-in is noticed on top, and Fix leads to settings`() {
+        show(blank.copy(trouble = Trouble.SignInRejected, lastEntry = coffee))
+
+        compose.onNodeWithText(SIGN_IN_NOTICE).assertExists()
+        compose.onNodeWithText("!").assertExists()
+        val notice = compose.onNodeWithText(SIGN_IN_NOTICE).getUnclippedBoundsInRoot()
+        val last = compose.onNodeWithText("Coffee with Ana", substring = true).getUnclippedBoundsInRoot()
+        assertTrue(notice.bottom <= last.top)
+        compose.onNodeWithText("Fix").performClick()
+        assertEquals(listOf("fix"), calls)
+    }
+
+    @Test
+    fun `one entry that could not be sent is noticed with what the site answered, and Review leads to the queue`() {
+        show(blank.copy(trouble = Trouble.NotSent(1, "Sorry, you are not allowed to create posts.")))
+
+        compose.onNodeWithText("1 entry could not be sent.").assertExists()
+        compose.onNodeWithText("Sorry, you are not allowed to create posts.").assertExists()
+        compose.onNodeWithText("Review").performClick()
+        assertEquals(listOf("review"), calls)
+    }
+
+    @Test
+    fun `several are counted`() {
+        show(blank.copy(trouble = Trouble.NotSent(3, null)))
+        compose.onNodeWithText("3 entries could not be sent.").assertExists()
+        compose.onNodeWithText("3").assertExists()
+    }
+
+    @Test
+    fun `the notice does not get in the way of writing`() {
+        show(blank.copy(trouble = Trouble.SignInRejected))
+        compose.onNode(hasSetTextAction()).performTextInput("Coffee")
+        assertEquals(listOf("type:Coffee"), calls)
     }
 }

@@ -29,7 +29,7 @@ data class JournalColors(
     val app: Color,
     val onApp: Color,
     val sheet: Color,
-    /** Only on `Confirm discard` and `Confirm delete`. */
+    /** On `Confirm discard` and `Confirm delete`, and on what the user has to fix. */
     val danger: Color,
     /** Hairlines and secondary text on the settings and queue screens. */
     val quiet: Color,
@@ -54,6 +54,9 @@ val DarkColors = JournalColors(
 )
 
 val LocalJournalColors = staticCompositionLocalOf { LightColors }
+
+/** The widget's badge, in both themes; widget_badge.xml repeats it. The capture dialog's notice wears it too. */
+val AlertRed = Color(0xFFE00016)
 
 /** The day number's typeface, and the only font the app bundles. Its licence is in assets/licenses. */
 @OptIn(ExperimentalTextApi::class)

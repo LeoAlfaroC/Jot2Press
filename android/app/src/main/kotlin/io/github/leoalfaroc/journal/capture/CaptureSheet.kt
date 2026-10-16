@@ -52,6 +52,15 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.unit.sp
+import io.github.leoalfaroc.journal.Trouble
+import io.github.leoalfaroc.journal.ui.AlertRed
 import io.github.leoalfaroc.journal.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.journal.ui.Corner
 import io.github.leoalfaroc.journal.ui.JournalType
@@ -73,7 +82,13 @@ class CaptureActions(
     val askDeleteLast: () -> Unit = {},
     val confirmDeleteLast: () -> Unit = {},
     val refresh: () -> Unit = {},
+    /** Opens settings, to fix a rejected sign-in. */
+    val fix: () -> Unit = {},
+    /** Opens the queue, where entries that could not be sent are retried or deleted. */
+    val review: () -> Unit = {},
 )
+
+const val SIGN_IN_NOTICE = "The site rejected the sign-in. Entries wait on the phone."
 
 /** The whole window: the sheet at the bottom, on top of the keyboard. A tap anywhere else closes the dialog. */
 @Composable
@@ -132,16 +147,59 @@ fun CaptureSheet(
             .background(colors.sheet, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
             .windowInsetsPadding(insets)
             .semantics { paneTitle = "New entry" }
-            // The line about the last entry brings its own height, so the sheet gives it less room above.
-            .padding(start = 20.dp, end = 20.dp, top = if (ui.lastEntry != null) 6.dp else 16.dp, bottom = 16.dp),
+            // The notice and the line about the last entry bring their own height, so the sheet gives them less room above.
+            .padding(start = 20.dp, end = 20.dp, top = if (ui.trouble != null || ui.lastEntry != null) 6.dp else 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        ui.trouble?.let { Notice(it, actions) }
         ui.lastEntry?.let { LastEntryLine(it, canEdit = ui.canEditLast, actions = actions) }
         Header(ui, actions)
         Editor(ui, actions)
         SendButton(enabled = ui.canSend, onClick = actions.send)
     }
 }
+
+/**
+ * What the user has to fix, first in the sheet, with the widget badge's red mark and the way to fix it.
+ * It does not stop writing: what is sent waits on the phone.
+ */
+@Composable
+private fun Notice(trouble: Trouble, actions: CaptureActions) {
+    val colors = LocalJournalColors.current
+    val (headline, reason) = when (trouble) {
+        Trouble.SignInRejected -> SIGN_IN_NOTICE to null
+        is Trouble.NotSent -> (if (trouble.count == 1) "1 entry could not be sent." else "${trouble.count} entries could not be sent.") to trouble.reason
+    }
+    Column {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier
+                    .semantics { hideFromAccessibility() }
+                    .heightIn(min = 22.dp)
+                    .widthIn(min = 22.dp)
+                    .clip(MarkShape)
+                    .background(AlertRed)
+                    .border(2.dp, colors.sheet, MarkShape)
+                    .padding(horizontal = 5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(trouble.mark, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 11.sp)
+            }
+            // Read out when the dialog opens, and again when it changes.
+            Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(headline, style = JournalType.label, color = colors.danger)
+                reason?.let { Text(it, style = JournalType.label.copy(fontWeight = FontWeight.Normal), color = colors.quiet, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+            when (trouble) {
+                Trouble.SignInRejected -> TextAction("Fix", actions.fix, flush = Alignment.End)
+                is Trouble.NotSent -> TextAction("Review", actions.review, flush = Alignment.End)
+            }
+        }
+        HorizontalDivider(color = colors.quiet.copy(alpha = 0.4f))
+    }
+}
+
+private val MarkShape = RoundedCornerShape(11.dp)
 
 /** One plain line, above the day so that it cannot be read as the title of the entry being written. */
 @Composable
