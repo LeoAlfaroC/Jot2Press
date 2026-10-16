@@ -246,6 +246,8 @@ class CaptureActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        // At once, not through the work queue: the search service starts only while this count says a dialog is in sight.
+        (application as JournalApp).container.dialogs.started()
         // The day or the last entry's grace window may have changed while the dialog was out of sight.
         viewModel.refresh()
         viewModel.shown(true)
@@ -254,6 +256,7 @@ class CaptureActivity : ComponentActivity() {
     /** Out of sight the dialog stops listening for positions. A search after `Send` goes on in its service. */
     override fun onStop() {
         super.onStop()
+        (application as JournalApp).container.dialogs.stopped()
         viewModel.shown(false)
     }
 

@@ -139,6 +139,16 @@ class CaptureActivityTest {
     }
 
     @Test
+    fun `the dialog counts as on screen from its start to its stop`() {
+        assertFalse(world.container.dialogs.onScreen)
+        open().use {
+            assertTrue(world.container.dialogs.onScreen)
+            it.moveToState(Lifecycle.State.CREATED)
+            assertFalse(world.container.dialogs.onScreen)
+        }
+    }
+
+    @Test
     fun `pausing alone keeps the text as the draft`() {
         open().use {
             compose.onNode(hasSetTextAction()).performTextInput("Walked back along the seafront")

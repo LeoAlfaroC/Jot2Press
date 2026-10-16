@@ -10,6 +10,7 @@ import androidx.glance.appwidget.updateAll
 import androidx.room.Room
 import androidx.work.WorkManager
 import io.github.leoalfaroc.journal.data.CredentialStore
+import io.github.leoalfaroc.journal.capture.Dialogs
 import io.github.leoalfaroc.journal.capture.Gallery
 import io.github.leoalfaroc.journal.capture.MediaStoreGallery
 import io.github.leoalfaroc.journal.data.Credentials
@@ -66,6 +67,8 @@ class AppContainer(
     val refreshWidget: suspend () -> Unit = {},
     /** Wakes the search for a position when none comes. */
     locationTicks: Flow<Unit> = everySecond(),
+    /** Which capture dialogs are in sight, for the search service to start only then. */
+    val dialogs: Dialogs = Dialogs(),
 ) {
     /**
      * What the capture dialog does to the queue, for every opening of it: a dialog that is closing
@@ -111,6 +114,7 @@ fun realContainer(app: Application): AppContainer {
     val client = journalHttpClient()
     val apiFor = { signIn: Credentials -> HttpJournalApi(client, signIn) }
     val connectivity = app.getSystemService(ConnectivityManager::class.java)
+    val dialogs = Dialogs()
     return AppContainer(
         clock = PhoneClock,
         queue = queue,
@@ -119,12 +123,13 @@ fun realContainer(app: Application): AppContainer {
         photoFiles = photoFiles,
         gallery = MediaStoreGallery(app.contentResolver, app.getString(R.string.app_name)),
         location = AndroidLocationSource(app, PhoneClock),
-        searchService = AndroidSearchService(app),
+        searchService = AndroidSearchService(app) { dialogs.onScreen },
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
         sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
         apiFor = apiFor,
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
         onUnmeteredNetwork = { connectivity.activeNetwork != null && !connectivity.isActiveNetworkMetered },
         refreshWidget = { JournalWidget().updateAll(app) },
+        dialogs = dialogs,
     )
 }

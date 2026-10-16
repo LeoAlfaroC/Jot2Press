@@ -28,7 +28,7 @@ class SearchServiceTest {
 
     @Test
     fun `the service stands in the foreground with its silent notification`() {
-        AndroidSearchService(app).start()
+        AndroidSearchService(app) { true }.start()
         val service = Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1).get()
 
         val notification = shadowOf(service).lastForegroundNotification
@@ -43,7 +43,7 @@ class SearchServiceTest {
 
     @Test
     fun `starting and stopping go to the service`() {
-        val search = AndroidSearchService(app)
+        val search = AndroidSearchService(app) { true }
 
         assertTrue(search.start())
         assertEquals(LocationService::class.java.name, shadowOf(app).nextStartedService.component?.className)
@@ -55,7 +55,7 @@ class SearchServiceTest {
 
     @Test
     fun `a stop before the service reaches the foreground waits for it, and then the service stops itself`() {
-        val search = AndroidSearchService(app)
+        val search = AndroidSearchService(app) { true }
         search.start()
 
         search.stop()
@@ -69,7 +69,7 @@ class SearchServiceTest {
 
     @Test
     fun `a stop once the service is in the foreground stops it`() {
-        val search = AndroidSearchService(app)
+        val search = AndroidSearchService(app) { true }
         search.start()
         Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1)
 
@@ -80,12 +80,21 @@ class SearchServiceTest {
 
     @Test
     fun `a service that is still wanted stays in the foreground`() {
-        AndroidSearchService(app).start()
+        AndroidSearchService(app) { true }.start()
 
         val service = Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1).get()
 
         assertFalse(shadowOf(service).isStoppedBySelf)
         assertTrue(shadowOf(service).isLastForegroundNotificationAttached)
+    }
+
+    @Test
+    fun `with no dialog on screen nothing is started`() {
+        val search = AndroidSearchService(app) { false }
+
+        assertFalse(search.start())
+
+        assertNull(shadowOf(app).nextStartedService)
     }
 
     @Test

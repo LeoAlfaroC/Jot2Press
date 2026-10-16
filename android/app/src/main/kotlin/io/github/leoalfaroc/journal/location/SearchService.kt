@@ -20,8 +20,13 @@ interface SearchService {
     fun stop()
 }
 
-class AndroidSearchService(private val context: Context) : SearchService {
+class AndroidSearchService(
+    private val context: Context,
+    /** Android 14 and later refuse a location service started with no activity in sight, and crash the app when it times out. */
+    private val onScreen: () -> Boolean,
+) : SearchService {
     override fun start(): Boolean {
+        if (!onScreen()) return false
         synchronized(LocationService.lock) { LocationService.wanted = true }
         return try {
             ContextCompat.startForegroundService(context, Intent(context, LocationService::class.java))
