@@ -13,6 +13,7 @@ import io.github.leoalfaroc.journal.net.ApiResult
 import io.github.leoalfaroc.journal.net.EntryPayload
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.settings.megabytes
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
@@ -127,6 +128,12 @@ class Sender(
             } catch (e: IOException) {
                 // The phone could not write what it would send (no space): not the photo's fault.
                 return Step.Stop(Outcome.RETRY)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Whatever the platform's image code throws: a photo it cannot handle is the entry's problem, not the queue's.
+                queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
+                return Step.Again
             }
             val result = try {
                 api.uploadPhoto(photo.id, ready.file, ready.mediaType)

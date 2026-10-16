@@ -237,6 +237,19 @@ class SenderTest {
     }
 
     @Test
+    fun `a photo that fails to prepare in an unexpected way fails the entry as unreadable`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, _) = pendingWithPhotos("Coffee", 1)
+        prepare = { _, _ -> throw IllegalStateException("Bitmap broke") }
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(EntryState.FAILED, stored(entry.id)!!.state)
+        assertEquals("Photo 1 could not be read on the phone.", stored(entry.id)!!.lastError)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun `a confirmed entry leaves the phone`() = runTest {
         val entry = pending("Coffee with Ana")
         created()
