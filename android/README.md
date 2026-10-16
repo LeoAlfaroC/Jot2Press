@@ -2,7 +2,7 @@
 
 The capture app. A widget on the home screen opens a small dialog over the launcher, and what is typed there is sent to the journal plugin in this repository, which adds it to the day's post.
 
-This version sends text and photos. Location is not built yet.
+This version sends text, photos and, when you turn it on, where each entry was written.
 
 ## Requirements
 
@@ -38,6 +38,8 @@ Until credentials are saved, the widget's write button opens settings. Once save
 - The write button on the widget opens the capture dialog. `Send` stores the entry and closes the dialog.
 - The camera and photos buttons beside `Send` add up to 10 photos to an entry: the system photo picker for several at once, the phone's camera app for one. An entry can be photos alone. A photo taken with the camera is also saved to the gallery, in an album with the app's name; that copy is yours and stays.
 - JPEG, PNG and WebP photos are sent as they are when they fit the site's upload limit. Other types (HEIC, for example) and larger ones are re-encoded as JPEG until they fit.
+- `Attach location`, under Sending in settings, asks for the location permission. Precise location is best; approximate also works. With it on, a pin beside the photos button says whether the entry sends where it was written: filled for yes, crossed out for no. A tap changes it, and the next entry starts the way the last one was left. `Edit` on the last entry shows the pin as that entry had it.
+- An entry sent with the pin on takes the most precise position found while the dialog was open. When that is not within 20 m, the app keeps looking during the grace window, for at most a minute, and a notification says so: `Getting a precise location for your entry`. It does not keep looking with approximate location only, or with a grace window of 0.
 - An entry waits for the grace window, 60 seconds unless changed, before it is sent. During that time the dialog shows it at the top, with `Edit` and `Delete`.
 - Closing the dialog with text or photos in it keeps them as a draft.
 - The widget is one square. A red badge appears on its corner only when something needs fixing: a number for entries that could not be sent, `!` when the site rejected the sign-in. Tapping the badge opens the queue, where those entries are retried or deleted, or settings for the sign-in. Entries waiting to be sent and a kept draft show nothing.
@@ -64,6 +66,8 @@ The first command tests everything except the encryption of the credentials, whi
 - App data is left out of device backups and transfers. An unsent entry exists only on the phone, and is deleted from it once the site confirms it.
 - The app keeps its own copy of each photo of an entry until the site confirms the entry, then deletes it. Originals in the gallery are never changed.
 - A photo re-encoded to fit the upload limit loses its metadata, location included. A photo sent as it is keeps whatever its file holds, which can include where it was taken.
+- Location is off until you turn on `Attach location`. Only coordinates are kept, never an address, and they are sent only for an entry whose pin was on. A position the phone kept for an entry whose pin was then turned off is never sent, and is deleted with the entry.
+- In the post, the coordinates can be read by whoever can read the post, and opening its Google Maps link sends them to Google.
 
 ## Licences
 
