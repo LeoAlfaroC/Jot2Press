@@ -121,15 +121,18 @@ class CaptureViewModel(
 
     /** The camera came back for the photo with this id. Its copy also goes to the gallery; if that fails, the entry keeps it. */
     fun addTaken(id: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val photo = intake.taken(intake.cameraPhoto(id)) ?: return@launch
-            // Before the photo joins the editor: a full editor deletes the copy, which must not happen under the gallery's read.
-            try {
-                gallery.save(files.file(photo.file))
-            } catch (e: Exception) {
-                // The gallery copy is a convenience: the entry has its own.
-            }
-            work.run { model.addPhotos(listOf(photo)) }
+        work.run {
+            val photo = withContext(Dispatchers.IO) {
+                val photo = intake.taken(intake.cameraPhoto(id)) ?: return@withContext null
+                // Before the photo joins the editor: a full editor deletes the copy, which must not happen under the gallery's read.
+                try {
+                    gallery.save(files.file(photo.file))
+                } catch (e: Exception) {
+                    // The gallery copy is a convenience: the entry has its own.
+                }
+                photo
+            } ?: return@run
+            model.addPhotos(listOf(photo))
         }
     }
 
