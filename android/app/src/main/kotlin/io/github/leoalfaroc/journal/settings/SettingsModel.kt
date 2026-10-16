@@ -9,6 +9,7 @@ import io.github.leoalfaroc.journal.data.PostStatus
 import io.github.leoalfaroc.journal.data.Settings
 import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.normalizeSiteUrl
+import io.github.leoalfaroc.journal.location.Permission
 import io.github.leoalfaroc.journal.net.ApiResult
 import io.github.leoalfaroc.journal.queueFacts
 import io.github.leoalfaroc.journal.queueSummary
@@ -47,6 +48,10 @@ data class SettingsForm(
     val graceError: String? = null,
     val pattern: String = "",
     val patternError: String? = null,
+    /** A location permission is held, as of the last look. */
+    val locationPermitted: Boolean = false,
+    /** The last request was refused, and Android no longer shows its prompt. */
+    val locationBlocked: Boolean = false,
 )
 
 data class SettingsUi(
@@ -56,7 +61,10 @@ data class SettingsUi(
     val queueSummary: String,
     /** Today's title with the pattern as typed, or null when the pattern cannot make one. */
     val titlePreview: String?,
-)
+) {
+    /** `Attach location` shows on: stored on, with a location permission held. */
+    val locationOn: Boolean get() = settings.attachLocation && form.locationPermitted
+}
 
 const val GRACE_ERROR = "A whole number from 0 to $MAX_GRACE_SECONDS."
 const val PATTERN_ERROR = "Not a date pattern. It was not saved."
@@ -104,6 +112,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 pattern = kept.titlePattern,
             )
         }
+        checkLocation()
     }
 
     /** Opens the saved sign-in for typing. */
@@ -210,6 +219,20 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
     suspend fun setWifiOnly(on: Boolean) {
         settings.setWifiOnly(on)
         container.scheduler.reschedule()
+    }
+
+    /** Looks again at the location permission, which can change in Android settings at any time. */
+    fun checkLocation() {
+        val held = container.location.permission() != Permission.NONE
+        form.update { it.copy(locationPermitted = held, locationBlocked = it.locationBlocked && !held) }
+    }
+
+    suspend fun setAttachLocation(on: Boolean) = settings.setAttachLocation(on)
+
+    /** Android's answer to the request made when `Attach location` was turned on. `blocked`: refused, and Android will not ask again. */
+    suspend fun locationAnswered(granted: Boolean, blocked: Boolean) {
+        checkLocation()
+        if (granted) settings.setAttachLocation(true) else form.update { it.copy(locationBlocked = blocked) }
     }
 
     suspend fun chooseCategory(slug: String) = settings.chooseCategory(slug)

@@ -9,6 +9,7 @@ import io.github.leoalfaroc.journal.data.Category
 import io.github.leoalfaroc.journal.data.CategoryNotice
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.PostStatus
+import io.github.leoalfaroc.journal.location.Permission
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
 import kotlinx.coroutines.Dispatchers
@@ -425,5 +426,61 @@ class SettingsModelTest {
         assertEquals("64 MB", megabytes(67_108_864))
         assertEquals("1.5 MB", megabytes(1_572_864))
         assertEquals("0.9 MB", megabytes(1_000_000))
+    }
+
+    @Test
+    fun `Attach location shows on only while it is stored on and a location permission is held`() = runTest {
+        world.settings.setAttachLocation(true)
+        model.load()
+        assertFalse(ui().locationOn)
+
+        world.location.permission = Permission.APPROXIMATE
+        model.checkLocation()
+        assertTrue(ui().locationOn)
+
+        world.location.permission = Permission.NONE
+        model.checkLocation()
+        assertFalse(ui().locationOn)
+    }
+
+    @Test
+    fun `a granted permission stores Attach location on, with the pin on`() = runTest {
+        model.load()
+        world.location.permission = Permission.PRECISE
+
+        model.locationAnswered(granted = true, blocked = false)
+
+        assertTrue(world.settings.get().attachLocation)
+        assertTrue(world.settings.get().pinOn)
+        assertTrue(ui().locationOn)
+    }
+
+    @Test
+    fun `a refusal leaves it off, says so when Android no longer asks, and the line goes once a permission is held`() = runTest {
+        model.load()
+
+        model.locationAnswered(granted = false, blocked = false)
+        assertFalse(world.settings.get().attachLocation)
+        assertFalse(ui().form.locationBlocked)
+
+        model.locationAnswered(granted = false, blocked = true)
+        assertFalse(world.settings.get().attachLocation)
+        assertTrue(ui().form.locationBlocked)
+
+        world.location.permission = Permission.PRECISE
+        model.checkLocation()
+        assertFalse(ui().form.locationBlocked)
+    }
+
+    @Test
+    fun `turning Attach location off stores it off`() = runTest {
+        world.settings.setAttachLocation(true)
+        world.location.permission = Permission.PRECISE
+        model.load()
+
+        model.setAttachLocation(false)
+
+        assertFalse(world.settings.get().attachLocation)
+        assertFalse(ui().locationOn)
     }
 }

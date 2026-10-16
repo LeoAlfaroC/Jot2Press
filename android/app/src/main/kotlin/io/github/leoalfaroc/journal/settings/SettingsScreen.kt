@@ -72,6 +72,10 @@ class SettingsActions(
     val setPostStatus: (PostStatus) -> Unit = {},
     val setTitleLanguage: (TitleLanguage) -> Unit = {},
     val editPattern: (String) -> Unit = {},
+    /** On goes through Android's permission request first. */
+    val setAttachLocation: (Boolean) -> Unit = {},
+    /** Opens the app's page in Android settings, where a blocked permission is given. */
+    val openAppSettings: () -> Unit = {},
 )
 
 const val UNREADABLE_LINE = "The saved sign-in can no longer be read on this phone. Enter it again."
@@ -82,7 +86,9 @@ const val SAVED_LINE = "Saved."
 /** The saved password is never shown, not even its length. */
 private const val HIDDEN_PASSWORD = "••••••••••••"
 const val NO_CATEGORIES_LINE = "Available after Test connection succeeds."
-const val PUBLIC_LINE = "Every entry is public as soon as it is sent."
+const val PUBLIC_LINE = "Every entry is public as soon as it is sent, with its photos."
+const val PUBLIC_LOCATION_LINE = "Every entry is public as soon as it is sent, with its photos and its location."
+const val LOCATION_BLOCKED_LINE = "Location is blocked for this app in Android settings."
 const val EXISTING_POSTS_LINE = "Category and post status apply to day posts created from now on. Existing posts keep theirs."
 const val GRACE_LINE = "A sent entry can still be edited or deleted for this long. 0 sends at once."
 
@@ -161,11 +167,24 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
             Text("Upload on Wi-Fi only", Modifier.weight(1f), style = JournalType.excerpt, color = colors.you)
             Switch(checked = settings.wifiOnly, onCheckedChange = null)
         }
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(ui.locationOn, role = Role.Switch, onValueChange = actions.setAttachLocation),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Attach location", Modifier.weight(1f), style = JournalType.excerpt, color = colors.you)
+            Switch(checked = ui.locationOn, onCheckedChange = null)
+        }
+        if (form.locationBlocked) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(LOCATION_BLOCKED_LINE, Modifier.weight(1f), style = JournalType.label, color = colors.app)
+                TextAction("Open", actions.openAppSettings, flush = Alignment.End)
+            }
+        }
 
         Heading("Day post")
         CategoryPicker(settings, actions.chooseCategory)
         Choice("Post status", PostStatus.entries, settings.postStatus, { it.label }, actions.setPostStatus)
-        if (settings.postStatus == PostStatus.PUBLIC) Line(PUBLIC_LINE)
+        if (settings.postStatus == PostStatus.PUBLIC) Line(if (ui.locationOn) PUBLIC_LOCATION_LINE else PUBLIC_LINE)
         Line(EXISTING_POSTS_LINE)
         Choice("Title language", TitleLanguage.entries, settings.titleLanguage, { it.label }, actions.setTitleLanguage)
         Field(

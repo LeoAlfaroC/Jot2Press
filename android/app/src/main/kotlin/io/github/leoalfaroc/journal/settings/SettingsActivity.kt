@@ -1,12 +1,16 @@
 package io.github.leoalfaroc.journal.settings
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +56,7 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         scope.launch { model.load() }
     }
 
-    fun actions(openQueue: () -> Unit) = SettingsActions(
+    fun actions(openQueue: () -> Unit, askLocation: () -> Unit, openAppSettings: () -> Unit) = SettingsActions(
         openQueue = openQueue,
         dismissCategoryNotice = { container.settingsWork.run { model.dismissCategoryNotice() } },
         editSiteUrl = model::editSiteUrl,
@@ -68,7 +72,18 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         setPostStatus = { container.settingsWork.run { model.setPostStatus(it) } },
         setTitleLanguage = { container.settingsWork.run { model.setTitleLanguage(it) } },
         editPattern = { container.settingsWork.run { model.editPattern(it) } },
+        setAttachLocation = { on ->
+            // On goes through Android's permission request, whose answer comes to `locationAnswered`.
+            if (on) askLocation() else container.settingsWork.run { model.setAttachLocation(false) }
+        },
+        openAppSettings = openAppSettings,
     )
+
+    fun locationAnswered(granted: Boolean, blocked: Boolean) {
+        container.settingsWork.run { model.locationAnswered(granted, blocked) }
+    }
+
+    fun checkLocation() = model.checkLocation()
 
     fun retry(id: String) {
         scope.launch {
@@ -94,6 +109,9 @@ class SettingsActivity : ComponentActivity() {
 
     companion object {
         /** Starts on the queue screen, where entries that could not be sent are retried or deleted. */
+        /** Asked together, so that Android 12 and later offer the choice between precise and approximate. */
+        private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+
         const val OPEN_QUEUE = "io.github.leoalfaroc.journal.OPEN_QUEUE"
 
         fun queueIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java).putExtra(OPEN_QUEUE, true)
@@ -104,6 +122,11 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             JournalTheme {
+                // Outside the branches below, so that an answer arriving after a recreation still finds it.
+                val askLocation = rememberLauncherForActivityResult(RequestMultiplePermissions()) { answer ->
+                    val granted = answer.values.any { it }
+                    viewModel.locationAnswered(granted, blocked = !granted && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION))
+                }
                 var onQueue by rememberSaveable { mutableStateOf(intent.getBooleanExtra(OPEN_QUEUE, false)) }
                 if (onQueue) {
                     BackHandler { onQueue = false }
@@ -111,10 +134,24 @@ class SettingsActivity : ComponentActivity() {
                     ui?.let { QueueScreen(it, onRetry = viewModel::retry, onDelete = viewModel::delete, onBack = { onQueue = false }) }
                 } else {
                     val ui by viewModel.settings.collectAsStateWithLifecycle()
-                    val actions = remember { viewModel.actions(openQueue = { onQueue = true }) }
+                    val actions = remember {
+                        viewModel.actions(
+                            openQueue = { onQueue = true },
+                            askLocation = { askLocation.launch(LOCATION_PERMISSIONS) },
+                            openAppSettings = {
+                                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                            },
+                        )
+                    }
                     ui?.let { SettingsScreen(stringResource(R.string.app_name), it, actions) }
                 }
             }
         }
+    }
+
+    /** The location permission may have changed in Android settings while this screen was away. */
+    override fun onResume() {
+        super.onResume()
+        viewModel.checkLocation()
     }
 }

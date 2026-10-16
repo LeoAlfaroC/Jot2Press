@@ -3,6 +3,7 @@ package io.github.leoalfaroc.journal.settings
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -45,6 +46,8 @@ class SettingsScreenTest {
         setPostStatus = { calls += "postStatus:$it" },
         setTitleLanguage = { calls += "titleLanguage:$it" },
         editPattern = { calls += "pattern:$it" },
+        setAttachLocation = { calls += "attachLocation:$it" },
+        openAppSettings = { calls += "openAppSettings" },
     )
     private val form = SettingsForm(revision = 1, editing = true, grace = "60", pattern = Titles.DEFAULT_PATTERN)
     private val fresh = SettingsUi(form, Settings(), queueSummary = "Empty", titlePreview = "2026-10-11 · Sunday, October 11")
@@ -231,5 +234,42 @@ class SettingsScreenTest {
         compose.onNodeWithText("The category \"Travel\" no longer exists on your site. Day posts now go to \"Journal\".").assertExists()
         compose.onNodeWithText("OK").performClick()
         assertEquals(listOf("dismissCategoryNotice"), calls)
+    }
+
+    @Test
+    fun `Attach location is off unless the screen shows it on, and a tap goes to the model`() {
+        show(fresh)
+
+        compose.onNodeWithText("Attach location").performScrollTo().assertIsOff().performClick()
+
+        assertEquals(listOf("attachLocation:true"), calls)
+        compose.onNodeWithText(LOCATION_BLOCKED_LINE).assertDoesNotExist()
+    }
+
+    @Test
+    fun `stored on with a permission held, Attach location shows on`() {
+        show(fresh.copy(form = form.copy(locationPermitted = true), settings = Settings(attachLocation = true)))
+
+        compose.onNodeWithText("Attach location").performScrollTo().assertIsOn().performClick()
+
+        assertEquals(listOf("attachLocation:false"), calls)
+    }
+
+    @Test
+    fun `a blocked permission has its line, whose Open leads to Android settings`() {
+        show(fresh.copy(form = form.copy(locationBlocked = true)))
+
+        compose.onNodeWithText(LOCATION_BLOCKED_LINE).performScrollTo().assertExists()
+        compose.onNodeWithText("Open").performClick()
+
+        assertEquals(listOf("openAppSettings"), calls)
+    }
+
+    @Test
+    fun `with Public chosen and location on, the line says that the location is public too`() {
+        show(fresh.copy(form = form.copy(locationPermitted = true), settings = Settings(postStatus = PostStatus.PUBLIC, attachLocation = true)))
+
+        compose.onNodeWithText(PUBLIC_LOCATION_LINE).performScrollTo().assertExists()
+        compose.onNodeWithText(PUBLIC_LINE).assertDoesNotExist()
     }
 }

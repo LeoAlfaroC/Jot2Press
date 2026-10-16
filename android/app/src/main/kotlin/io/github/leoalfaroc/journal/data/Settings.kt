@@ -59,6 +59,10 @@ data class Settings(
     /** The site rejected the credentials; nothing is sent until others are saved or a `Test connection` of these succeeds. */
     val authError: Boolean = false,
     val categoryNotice: CategoryNotice? = null,
+    /** `Attach location` as stored. It shows on only while a location permission is held too. */
+    val attachLocation: Boolean = false,
+    /** The capture dialog's pin, as it was last left. */
+    val pinOn: Boolean = false,
 )
 
 const val MAX_GRACE_SECONDS = 600
@@ -76,6 +80,14 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     /** What the site reports as its upload limit, read again by the sender when it needs it. */
     suspend fun setMaxUploadBytes(bytes: Long) = change { it[MAX_UPLOAD] = bytes }
     suspend fun setAuthError(on: Boolean) = change { it[AUTH_ERROR] = on }
+
+    /** Turning it on turns the dialog's pin on too. */
+    suspend fun setAttachLocation(on: Boolean) = change {
+        it[ATTACH_LOCATION] = on
+        if (on) it[PIN_ON] = true
+    }
+
+    suspend fun setPinOn(on: Boolean) = change { it[PIN_ON] = on }
 
     /** Choosing a category also answers the notice about a missing one. */
     suspend fun chooseCategory(slug: String) = change {
@@ -153,6 +165,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
             configured = p[CONFIGURED] ?: false,
             authError = p[AUTH_ERROR] ?: false,
             categoryNotice = if (missing != null && used != null) CategoryNotice(missing, used) else null,
+            attachLocation = p[ATTACH_LOCATION] ?: false,
+            pinOn = p[PIN_ON] ?: false,
         )
     }
 
@@ -186,5 +200,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         private val AUTH_ERROR = booleanPreferencesKey("auth_error")
         private val NOTICE_MISSING = stringPreferencesKey("category_notice_missing")
         private val NOTICE_USED = stringPreferencesKey("category_notice_used")
+        private val ATTACH_LOCATION = booleanPreferencesKey("attach_location")
+        private val PIN_ON = booleanPreferencesKey("location_pin")
     }
 }

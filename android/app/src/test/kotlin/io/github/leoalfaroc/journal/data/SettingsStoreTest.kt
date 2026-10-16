@@ -11,8 +11,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -175,5 +177,23 @@ class SettingsStoreTest {
         settings.chooseCategory("journal")
         assertNull(settings.get().categoryNotice)
         assertEquals("journal", settings.get().categorySlug)
+    }
+
+    @Test
+    fun `Attach location is off by default, and turning it on turns the pin on`() = runTest {
+        assertFalse(settings.get().attachLocation)
+        assertFalse(settings.get().pinOn)
+
+        settings.setAttachLocation(true)
+        assertTrue(settings.get().attachLocation)
+        assertTrue(settings.get().pinOn)
+
+        settings.setPinOn(false)
+        assertTrue(settings.get().attachLocation)
+        assertFalse(settings.get().pinOn)
+
+        settings.setAttachLocation(false)
+        settings.setAttachLocation(true)
+        assertTrue(settings.get().pinOn)
     }
 }
