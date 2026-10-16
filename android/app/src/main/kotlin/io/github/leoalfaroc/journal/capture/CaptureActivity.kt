@@ -96,6 +96,10 @@ class CaptureViewModel(
         takePhoto = takePhoto,
         choosePhotos = choosePhotos,
         removePhoto = { id -> work.run { model.removePhoto(id) } },
+        togglePin = {
+            model.togglePin()
+            work.run { model.rememberPin() }
+        },
     )
 
     init {
@@ -104,6 +108,11 @@ class CaptureViewModel(
 
     fun refresh() {
         work.run { model.refresh() }
+    }
+
+    /** The dialog came into sight, or left it. */
+    fun shown(on: Boolean) {
+        work.run { model.shown(on) }
     }
 
     /**
@@ -154,7 +163,7 @@ class CaptureViewModel(
                 val application = this[APPLICATION_KEY] as JournalApp
                 val container = application.container
                 CaptureViewModel(
-                    CaptureModel(container.queue, container.settings, container.scheduler, container.clock),
+                    CaptureModel(container.queue, container.settings, container.scheduler, container.clock, container.locator),
                     container.captureWork,
                     PhotoIntake(application.contentResolver, container.photoFiles),
                     container.gallery,
@@ -239,6 +248,13 @@ class CaptureActivity : ComponentActivity() {
         super.onStart()
         // The day or the last entry's grace window may have changed while the dialog was out of sight.
         viewModel.refresh()
+        viewModel.shown(true)
+    }
+
+    /** Out of sight the dialog stops listening for positions. A search after `Send` goes on in its service. */
+    override fun onStop() {
+        super.onStop()
+        viewModel.shown(false)
     }
 
     /**

@@ -7,6 +7,7 @@ import io.github.leoalfaroc.journal.Trouble
 import io.github.leoalfaroc.journal.data.DraftPhoto
 import io.github.leoalfaroc.journal.data.EntryState
 import io.github.leoalfaroc.journal.data.MAX_PHOTOS
+import io.github.leoalfaroc.journal.location.Permission
 import io.github.leoalfaroc.journal.send.Scheduler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -32,11 +33,11 @@ class CaptureModelTest {
     fun close() = world.close()
 
     /** The dialog as it is each time it opens. */
-    private suspend fun opened() = CaptureModel(world.queue, world.settings, world.scheduler, world.clock).also { it.open() }
+    private suspend fun opened() = CaptureModel(world.queue, world.settings, world.scheduler, world.clock, world.container.locator).also { it.open() }
 
     @Test
     fun `it opens empty, on the current day, with nothing to send or discard`() = runTest {
-        val model = CaptureModel(world.queue, world.settings, world.scheduler, world.clock)
+        val model = CaptureModel(world.queue, world.settings, world.scheduler, world.clock, world.container.locator)
         assertFalse(model.ui.value.ready)
 
         model.open()
@@ -452,5 +453,162 @@ class CaptureModelTest {
 
         assertTrue(world.entries().isEmpty())
         assertFalse(world.photoFiles.file(photo.file).exists())
+    }
+
+    /** As after `Attach location` was turned on and a permission granted. */
+    private suspend fun locationOn(permission: Permission = Permission.PRECISE) {
+        world.settings.setAttachLocation(true)
+        world.location.permission = permission
+    }
+
+    @Test
+    fun `the pin shows only with Attach location on and a location permission, in its remembered state`() = runTest {
+        assertFalse(opened().ui.value.showPin)
+
+        world.settings.setAttachLocation(true)
+        assertFalse(opened().ui.value.showPin)
+
+        world.location.permission = Permission.APPROXIMATE
+        val shown = opened().ui.value
+        assertTrue(shown.showPin)
+        assertTrue(shown.pinOn)
+
+        world.settings.setPinOn(false)
+        assertFalse(opened().ui.value.pinOn)
+    }
+
+    @Test
+    fun `the pin's state is kept for the next dialog`() = runTest {
+        locationOn()
+        val model = opened()
+
+        model.togglePin()
+        assertFalse(model.ui.value.pinOn)
+        model.rememberPin()
+
+        assertFalse(world.settings.get().pinOn)
+        assertFalse(opened().ui.value.pinOn)
+    }
+
+    @Test
+    fun `a Send right after the pin is turned off sends without location`() = runTest {
+        locationOn()
+        world.location.last = world.fix(10f)
+        val model = opened()
+        model.type("Coffee")
+
+        model.togglePin()
+        model.send()
+        model.rememberPin()
+
+        val entry = world.entries().single()
+        assertFalse(entry.attachLocation)
+        assertNull(entry.lat)
+        assertFalse(world.settings.get().pinOn)
+    }
+
+    @Test
+    fun `in sight with the pin on the dialog listens, and the pin off or leaving stops it`() = runTest {
+        locationOn()
+        val model = opened()
+        assertEquals(0, world.location.subscribers.value)
+
+        model.shown(true)
+        world.location.subscribers.first { it > 0 }
+
+        model.togglePin()
+        model.rememberPin()
+        world.location.subscribers.first { it == 0 }
+
+        model.togglePin()
+        model.rememberPin()
+        world.location.subscribers.first { it > 0 }
+
+        model.shown(false)
+        world.location.subscribers.first { it == 0 }
+    }
+
+    @Test
+    fun `Send takes the best position found while the dialog was open, and the search goes on when it is not within 20 m`() = runTest {
+        locationOn()
+        val model = opened()
+        model.shown(true)
+        model.type("Coffee")
+        world.position(world.fix(50f, lat = 1.0))
+        world.position(world.fix(35f, lat = 2.0))
+
+        model.send()
+
+        val entry = world.entries().single()
+        assertTrue(entry.attachLocation)
+        assertEquals(2.0, entry.lat!!, 0.0)
+        assertTrue(world.search.running)
+        assertTrue(model.ui.value.closed)
+    }
+
+    @Test
+    fun `with the pin off, or Attach location off, Send stores no position and starts no search`() = runTest {
+        world.location.permission = Permission.PRECISE
+        world.location.last = world.fix(30f)
+        world.settings.setPinOn(true)
+        opened().apply {
+            type("Setting off")
+            send()
+        }
+
+        world.settings.setAttachLocation(true)
+        world.settings.setPinOn(false)
+        opened().apply {
+            type("Pin off")
+            send()
+        }
+
+        world.entries().forEach {
+            assertFalse(it.attachLocation)
+            assertNull(it.lat)
+        }
+        assertEquals(0, world.search.starts)
+    }
+
+    @Test
+    fun `Edit takes the entry's pin state, and sending it again keeps its position with no new search`() = runTest {
+        locationOn()
+        world.location.last = world.fix(12f, lat = 3.0)
+        opened().apply {
+            type("Coffee")
+            send()
+        }
+        assertEquals(3.0, world.entries().single().lat!!, 0.0)
+
+        val model = opened()
+        model.togglePin()
+        model.rememberPin()
+        model.editLast()
+
+        assertTrue(model.ui.value.pinOn)
+        assertTrue(world.settings.get().pinOn)
+        world.location.last = world.fix(5f, lat = 9.0)
+        model.type("Coffee with Ana")
+        model.send()
+
+        val entry = world.entries().single()
+        assertTrue(entry.attachLocation)
+        assertEquals(3.0, entry.lat!!, 0.0)
+        assertEquals(0, world.search.starts)
+    }
+
+    @Test
+    fun `a permission taken back hides the pin when the dialog looks again`() = runTest {
+        locationOn()
+        val model = opened()
+        model.shown(true)
+        assertTrue(model.ui.value.showPin)
+        world.location.subscribers.first { it > 0 }
+
+        world.location.permission = Permission.NONE
+        model.refresh()
+
+        assertFalse(model.ui.value.showPin)
+        world.location.subscribers.first { it == 0 }
     }
 }

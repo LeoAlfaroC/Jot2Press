@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
@@ -19,6 +22,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.journal.TestWorld
 import io.github.leoalfaroc.journal.data.EntryState
+import io.github.leoalfaroc.journal.location.Permission
 import io.github.leoalfaroc.journal.settings.SettingsActivity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -258,6 +262,47 @@ class CaptureActivityTest {
             scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
 
             compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+        }
+    }
+
+    @Test
+    fun `with Attach location on the pin is in the dialog, its state is remembered, and leaving stops listening`() {
+        runBlocking { world.settings.setAttachLocation(true) }
+        world.location.permission = Permission.PRECISE
+        open().use { scenario ->
+            compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasContentDescription("Attach location")).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(TIMEOUT) { world.location.subscribers.value > 0 }
+
+            compose.onNodeWithContentDescription("Attach location").assertIsOn().performClick()
+            compose.onNodeWithContentDescription("Attach location").assertIsOff()
+            compose.waitUntil(TIMEOUT) { !runBlocking { world.settings.get() }.pinOn }
+            compose.waitUntil(TIMEOUT) { world.location.subscribers.value == 0 }
+
+            compose.onNodeWithContentDescription("Attach location").performClick()
+            compose.waitUntil(TIMEOUT) { world.location.subscribers.value > 0 }
+            scenario.moveToState(Lifecycle.State.CREATED)
+            compose.waitUntil(TIMEOUT) { world.location.subscribers.value == 0 }
+        }
+    }
+
+    @Test
+    fun `Send with the pin on stores the position found while the dialog was open, and the search goes on`() {
+        runBlocking { world.settings.setAttachLocation(true) }
+        world.location.permission = Permission.PRECISE
+        open().use { scenario ->
+            lateinit var dialog: CaptureActivity
+            scenario.onActivity { dialog = it }
+            runBlocking { world.position(world.fix(45f, lat = 1.0)) }
+
+            compose.onNode(hasSetTextAction()).performTextInput("Coffee with Ana")
+            compose.onNodeWithText("Send").performClick()
+
+            compose.waitUntil(TIMEOUT) { dialog.isFinishing }
+            val entry = entries().single()
+            assertEquals(EntryState.GRACE, entry.state)
+            assertTrue(entry.attachLocation)
+            assertEquals(1.0, entry.lat!!, 0.0)
+            assertTrue(world.search.running)
         }
     }
 

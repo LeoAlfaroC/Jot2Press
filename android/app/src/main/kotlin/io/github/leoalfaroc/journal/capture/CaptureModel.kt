@@ -8,6 +8,8 @@ import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.data.time
 import io.github.leoalfaroc.journal.data.withPhotos
+import io.github.leoalfaroc.journal.location.Locator
+import io.github.leoalfaroc.journal.location.Permission
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.trouble
 import kotlinx.coroutines.flow.Flow
@@ -73,22 +75,29 @@ class CaptureModel(
     private val settings: SettingsStore,
     private val scheduler: Scheduler,
     private val clock: Clock,
+    private val locator: Locator,
 ) {
     private val state = MutableStateFlow(CaptureUi(day = LocalDate.now(clock)))
     val ui: StateFlow<CaptureUi> = state.asStateFlow()
 
     private val mutex = Mutex()
 
+    /** The dialog is in sight: only then does it listen for positions. */
+    private var inSight = false
+
     /** What needs fixing, as the queue and the settings change while the dialog is open. */
     val trouble: Flow<Trouble?> = combine(queue.observe(), settings.flow) { entries, settings ->
         trouble(entries, settings, clock.millis())
     }.distinctUntilChanged()
 
-    /** Loads the draft, if one was left. */
+    /** Loads the draft, if one was left, and the pin as it was last left. */
     suspend fun open() = mutex.withLock {
         val draft = queue.draft()
         val photos = draft?.let { queue.photosOf(it.id) }.orEmpty().map { DraftPhoto(it.id, it.file) }
-        state.update { it.copy(ready = true, text = draft?.text.orEmpty(), photos = photos, revision = it.revision + 1, entryDay = draft?.day) }
+        val pinOn = settings.get().pinOn
+        state.update { it.copy(ready = true, text = draft?.text.orEmpty(), photos = photos, revision = it.revision + 1, entryDay = draft?.day, pinOn = pinOn) }
+        locator.opened()
+        readPin()
         look()
     }
 
@@ -113,15 +122,38 @@ class CaptureModel(
         save()
     }
 
+    /** At once, so that a `Send` that follows sends with what the pin shows. `rememberPin` stores it. */
+    fun togglePin() = state.update { if (it.showPin && !it.closed) it.copy(pinOn = !it.pinOn) else it }
+
+    /** Keeps the pin's state for the next dialog, and listens or stops listening with it. */
+    suspend fun rememberPin() = mutex.withLock {
+        settings.setPinOn(state.value.pinOn)
+        listen()
+    }
+
+    /** The dialog came into sight, or left it. It listens for positions only while in sight. */
+    suspend fun shown(on: Boolean) = mutex.withLock {
+        inSight = on
+        listen()
+    }
+
     /** Keeps the text as the draft. Called shortly after typing stops, and when the dialog goes away. */
     suspend fun saveDraft() = mutex.withLock { save() }
 
-    /** Stores the entry and closes the dialog. */
+    /** Stores the entry, with its position when the pin is on, and closes the dialog. */
     suspend fun send() = mutex.withLock {
-        if (!state.value.canSend || state.value.closed) return@withLock
+        val now = state.value
+        if (!now.canSend || now.closed) return@withLock
         save()
-        queue.send(settings.get().graceSeconds)
+        val attach = now.showPin && now.pinOn
+        // An entry sent again after Edit keeps the position it has, and no search resumes for it.
+        val searching = attach && queue.draft()?.lat == null
+        val pick = if (searching) locator.pick() else null
+        val sent = queue.send(settings.get().graceSeconds, attachLocation = attach, position = pick?.fix)
+        // Before the dialog closes: Android lets the search's service start only while the dialog is in sight.
+        if (sent != null && searching) locator.follow(sent, pick)
         state.update { it.copy(closed = true) }
+        listen()
         scheduler.sync()
     }
 
@@ -136,10 +168,14 @@ class CaptureModel(
         if (!state.value.confirmingDiscard) return@withLock
         queue.discardDraft()
         state.update { it.copy(text = "", photos = emptyList(), entryDay = null, confirmingDiscard = false, closed = true) }
+        listen()
     }
 
-    /** Looks again at the day and at the most recent entry. Called when `nextChangeAt` arrives and when the dialog returns. */
-    suspend fun refresh() = mutex.withLock { look() }
+    /** Looks again at the day, the most recent entry and whether the pin shows. Called when `nextChangeAt` arrives and when the dialog returns. */
+    suspend fun refresh() = mutex.withLock {
+        look()
+        readPin()
+    }
 
     /** Takes the most recent entry back into the editor. Only while the editor is empty. */
     suspend fun editLast() = mutex.withLock {
@@ -156,8 +192,12 @@ class CaptureModel(
                 it.copy(text = entry.text + typedMeanwhile, photos = (photos + it.photos).take(MAX_PHOTOS).also { kept -> overflow = it.photos.filterNot { p -> p in kept } }, revision = it.revision + 1, entryDay = entry.day)
             }
             queue.forget(overflow)
+            // The pin takes the entry's state, which becomes the remembered one.
+            state.update { it.copy(pinOn = entry.attachLocation) }
+            settings.setPinOn(entry.attachLocation)
         }
         look()
+        listen()
     }
 
     fun askDeleteLast() = state.update {
@@ -176,6 +216,18 @@ class CaptureModel(
         if (!now.ready || now.closed) return
         // Without a day of its own, the editor holds no entry taken back: one that is still stored has been let go of.
         queue.saveDraft(now.text, now.photos, afresh = now.entryDay == null)
+    }
+
+    /** Whether the pin shows: `Attach location` on, and a location permission held. Either can change while the dialog is away. */
+    private suspend fun readPin() {
+        val shown = settings.get().attachLocation && locator.permission() != Permission.NONE
+        state.update { it.copy(showPin = shown) }
+        listen()
+    }
+
+    private suspend fun listen() {
+        val ui = state.value
+        locator.listen(inSight && !ui.closed && ui.showPin && ui.pinOn)
     }
 
     private suspend fun look() {
