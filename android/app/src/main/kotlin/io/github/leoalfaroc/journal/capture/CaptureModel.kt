@@ -1,10 +1,13 @@
 package io.github.leoalfaroc.journal.capture
 
 import io.github.leoalfaroc.journal.Trouble
+import io.github.leoalfaroc.journal.data.DraftPhoto
+import io.github.leoalfaroc.journal.data.MAX_PHOTOS
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.data.time
+import io.github.leoalfaroc.journal.data.withPhotos
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.trouble
 import kotlinx.coroutines.flow.Flow
@@ -24,7 +27,7 @@ data class LastEntry(
     val id: String,
     /** `HH:mm`. */
     val time: String,
-    /** The start of its text, on one line. */
+    /** The start of its text, on one line. It starts with the number of photos when it has any. */
     val excerpt: String,
     val confirmingDelete: Boolean = false,
 )
@@ -34,6 +37,7 @@ data class CaptureUi(
     /** False until the draft has been read: the dialog draws nothing before that. */
     val ready: Boolean = false,
     val text: String = "",
+    val photos: List<DraftPhoto> = emptyList(),
     /** Goes up each time the model, not the user, replaces the text: the editor then starts again from `text`. */
     val revision: Int = 0,
     /** The day the entry will be added to. */
@@ -49,9 +53,11 @@ data class CaptureUi(
     /** What the notice on top asks the user to fix, or null for no notice. */
     val trouble: Trouble? = null,
 ) {
-    val hasContent: Boolean get() = text.isNotBlank()
+    val hasContent: Boolean get() = text.isNotBlank() || photos.isNotEmpty()
     val canSend: Boolean get() = hasContent && !confirmingDiscard
     val canEditLast: Boolean get() = lastEntry != null && !hasContent
+    /** At 10 photos the camera and photos buttons stop working. */
+    val canAddPhotos: Boolean get() = photos.size < MAX_PHOTOS
 }
 
 /**
@@ -77,13 +83,27 @@ class CaptureModel(
     /** Loads the draft, if one was left. */
     suspend fun open() = mutex.withLock {
         val draft = queue.draft()
-        state.update { it.copy(ready = true, text = draft?.text.orEmpty(), revision = it.revision + 1, entryDay = draft?.day) }
+        val photos = draft?.let { queue.photosOf(it.id) }.orEmpty().map { DraftPhoto(it.id, it.file) }
+        state.update { it.copy(ready = true, text = draft?.text.orEmpty(), photos = photos, revision = it.revision + 1, entryDay = draft?.day) }
         look()
     }
 
-    fun type(text: String) = state.update {
-        // Emptying the editor lets go of an entry taken back from its grace window: what is typed next is a new entry.
-        if (text.isBlank()) it.copy(text = text, entryDay = null, day = LocalDate.now(clock)) else it.copy(text = text)
+    fun type(text: String) = state.update { letGoIfEmpty(it.copy(text = text)) }
+
+    /** An editor emptied of text and photos lets go of an entry taken back from its grace window: what comes next is a new entry. */
+    private fun letGoIfEmpty(ui: CaptureUi): CaptureUi =
+        if (ui.hasContent) ui else ui.copy(entryDay = null, day = LocalDate.now(clock))
+
+    /** Photos whose copies were just made. Kept at once, so the copies are never left without a row. */
+    suspend fun addPhotos(photos: List<DraftPhoto>) = mutex.withLock {
+        if (photos.isEmpty()) return@withLock
+        state.update { it.copy(photos = (it.photos + photos).take(MAX_PHOTOS)) }
+        save()
+    }
+
+    suspend fun removePhoto(id: String) = mutex.withLock {
+        state.update { letGoIfEmpty(it.copy(photos = it.photos.filterNot { photo -> photo.id == id })) }
+        save()
     }
 
     /** Keeps the text as the draft. Called shortly after typing stops, and when the dialog goes away. */
@@ -108,7 +128,7 @@ class CaptureModel(
     suspend fun confirmDiscard() = mutex.withLock {
         if (!state.value.confirmingDiscard) return@withLock
         queue.discardDraft()
-        state.update { it.copy(text = "", entryDay = null, confirmingDiscard = false, closed = true) }
+        state.update { it.copy(text = "", photos = emptyList(), entryDay = null, confirmingDiscard = false, closed = true) }
     }
 
     /** Looks again at the day and at the most recent entry. Called when `nextChangeAt` arrives and when the dialog returns. */
@@ -121,10 +141,11 @@ class CaptureModel(
         save()
         val entry = queue.takeBack(last.id)
         if (entry != null) {
+            val photos = queue.photosOf(entry.id).map { DraftPhoto(it.id, it.file) }
             state.update {
                 // The editor was empty when this began: what it holds now was typed meanwhile, and stays, after the entry's text.
                 val typedMeanwhile = it.text.takeIf(String::isNotBlank).orEmpty()
-                it.copy(text = entry.text + typedMeanwhile, revision = it.revision + 1, entryDay = entry.day)
+                it.copy(text = entry.text + typedMeanwhile, photos = (photos + it.photos).take(MAX_PHOTOS), revision = it.revision + 1, entryDay = entry.day)
             }
         }
         look()
@@ -145,11 +166,12 @@ class CaptureModel(
         val now = state.value
         if (!now.ready || now.closed) return
         // Without a day of its own, the editor holds no entry taken back: one that is still stored has been let go of.
-        queue.saveDraft(now.text, afresh = now.entryDay == null)
+        queue.saveDraft(now.text, now.photos, afresh = now.entryDay == null)
     }
 
     private suspend fun look() {
         val last = queue.latestInGrace()
+        val count = last?.let { queue.photosOf(it.id).size } ?: 0
         val today = LocalDate.now(clock)
         val midnight = today.plusDays(1).atStartOfDay(clock.zone).toInstant().toEpochMilli()
         state.update { ui ->
@@ -157,7 +179,7 @@ class CaptureModel(
                 day = ui.entryDay ?: today,
                 lastEntry = last?.let {
                     val confirming = ui.lastEntry?.id == it.id && ui.lastEntry.confirmingDelete
-                    LastEntry(it.id, it.time.orEmpty(), excerpt(it.text), confirming)
+                    LastEntry(it.id, it.time.orEmpty(), withPhotos(count, excerpt(it.text)), confirming)
                 },
                 nextChangeAt = minOf(midnight, last?.graceEndsAt ?: Long.MAX_VALUE),
             )

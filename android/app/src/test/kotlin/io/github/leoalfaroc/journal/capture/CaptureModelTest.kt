@@ -4,7 +4,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.NetworkType
 import io.github.leoalfaroc.journal.TestWorld
 import io.github.leoalfaroc.journal.Trouble
+import io.github.leoalfaroc.journal.data.DraftPhoto
 import io.github.leoalfaroc.journal.data.EntryState
+import io.github.leoalfaroc.journal.data.MAX_PHOTOS
 import io.github.leoalfaroc.journal.send.Scheduler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -346,5 +348,94 @@ class CaptureModelTest {
 
         world.settings.setAuthError(true)
         assertEquals(Trouble.SignInRejected, model.trouble.first())
+    }
+
+    private var photoIds = 0
+
+    private fun copy(): DraftPhoto {
+        val id = "photo-${++photoIds}"
+        world.photoFiles.newFile(id, "jpg").writeText(id)
+        return DraftPhoto(id, "$id.jpg")
+    }
+
+    @Test
+    fun `photos alone can be sent, and come back with the draft`() = runTest {
+        world.settings.setGraceSeconds(0)
+        val first = opened()
+        val photo = copy()
+        first.addPhotos(listOf(photo))
+        assertTrue(first.ui.value.canSend)
+        assertTrue(first.ui.value.hasContent)
+
+        val second = opened()
+        assertEquals(listOf(photo), second.ui.value.photos)
+
+        second.send()
+        assertEquals(EntryState.PENDING, world.entries().single().state)
+        assertEquals(listOf(photo.id), world.queue.photosOf(world.entries().single().id).map { it.id })
+    }
+
+    @Test
+    fun `the editor keeps at most 10 photos, and removing one makes room`() = runTest {
+        val model = opened()
+        model.addPhotos(List(12) { copy() })
+
+        assertEquals(MAX_PHOTOS, model.ui.value.photos.size)
+        assertFalse(model.ui.value.canAddPhotos)
+
+        model.removePhoto(model.ui.value.photos.first().id)
+        assertTrue(model.ui.value.canAddPhotos)
+        assertEquals(9, world.queue.photosOf(world.queue.draft()!!.id).size)
+    }
+
+    @Test
+    fun `removing the last photo of an empty editor lets go of the draft`() = runTest {
+        val model = opened()
+        val photo = copy()
+        model.addPhotos(listOf(photo))
+
+        model.removePhoto(photo.id)
+
+        assertFalse(model.ui.value.hasContent)
+        assertTrue(world.entries().isEmpty())
+        assertFalse(world.photoFiles.file(photo.file).exists())
+    }
+
+    @Test
+    fun `Edit brings the last entry back with its photos, and the line shows how many it has`() = runTest {
+        val model = opened()
+        model.type("Sunset from the bridge")
+        model.addPhotos(listOf(copy(), copy()))
+        model.send()
+
+        val next = opened()
+        assertEquals("2 photos · Sunset from the bridge", next.ui.value.lastEntry!!.excerpt)
+
+        next.editLast()
+
+        assertEquals("Sunset from the bridge", next.ui.value.text)
+        assertEquals(2, next.ui.value.photos.size)
+    }
+
+    @Test
+    fun `an entry of photos alone shows only the count on the line`() = runTest {
+        val model = opened()
+        model.addPhotos(listOf(copy()))
+        model.send()
+
+        assertEquals("1 photo", opened().ui.value.lastEntry!!.excerpt)
+    }
+
+    @Test
+    fun `Confirm discard deletes the photos with the text`() = runTest {
+        val model = opened()
+        val photo = copy()
+        model.addPhotos(listOf(photo))
+        model.askDiscard()
+
+        model.confirmDiscard()
+
+        assertTrue(world.entries().isEmpty())
+        assertFalse(world.photoFiles.file(photo.file).exists())
     }
 }
