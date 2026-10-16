@@ -31,14 +31,13 @@ class JournalWidgetTest {
     fun close() = world.close()
 
     @Test
-    fun `the write button opens the capture dialog, and the status area opens settings`() = runGlanceAppWidgetUnitTest {
+    fun `while nothing needs attention it is only the write button, which opens the capture dialog`() = runGlanceAppWidgetUnitTest {
         setContext(world.context)
         provideComposable { WidgetContent(WidgetState(configured = true)) }
 
         onNode(hasText("Write")).assertExists()
         onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
-        onNode(hasContentDescription("Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
-        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(1)
+        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(0)
     }
 
     @Test
@@ -47,35 +46,36 @@ class JournalWidgetTest {
         provideComposable { WidgetContent(WidgetState(configured = false)) }
 
         onNode(hasStartActivityClickAction<CaptureActivity>()).assertDoesNotExist()
-        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(2)
+        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(1)
     }
 
     @Test
-    fun `it shows how many entries are in the queue, and nothing when there are none`() = runGlanceAppWidgetUnitTest {
+    fun `entries that failed show as a badge that opens settings`() = runGlanceAppWidgetUnitTest {
         setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(count = 3, configured = true)) }
+        provideComposable { WidgetContent(WidgetState(failed = 2, configured = true)) }
 
-        onNode(hasText("3")).assertExists()
-        onNode(hasText("!")).assertDoesNotExist()
-        onNode(hasContentDescription("3 in the queue. Open settings")).assertExists()
+        onNode(hasText("2")).assertExists()
+        onNode(hasContentDescription("2 failed to send. Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
+        onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
     }
 
     @Test
-    fun `with an empty queue it shows no number`() = runGlanceAppWidgetUnitTest {
+    fun `the badge stops counting at 99`() = runGlanceAppWidgetUnitTest {
         setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(configured = true)) }
+        provideComposable { WidgetContent(WidgetState(failed = 120, configured = true)) }
 
-        onNode(hasText("0")).assertDoesNotExist()
+        onNode(hasText("99+")).assertExists()
+        onNode(hasContentDescription("120 failed to send. Open settings")).assertExists()
     }
 
     @Test
-    fun `it alerts when something needs attention, and marks an unfinished draft`() = runGlanceAppWidgetUnitTest {
+    fun `a rejected sign-in shows in the badge in place of the failed entries`() = runGlanceAppWidgetUnitTest {
         setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(count = 2, hasDraft = true, alert = true, configured = true)) }
+        provideComposable { WidgetContent(WidgetState(failed = 2, signInRejected = true, configured = true)) }
 
         onNode(hasText("!")).assertExists()
-        onNode(hasText("2")).assertExists()
-        onNode(hasContentDescription("Needs attention. 2 in the queue. Unfinished draft. Open settings")).assertExists()
+        onNode(hasText("2")).assertDoesNotExist()
+        onNode(hasContentDescription("The site rejected the sign-in. Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
     }
 
     @Test
@@ -86,11 +86,12 @@ class JournalWidgetTest {
         world.connect()
         world.write("Coffee")
         world.queue.saveDraft("Unfinished")
-        assertEquals(WidgetState(count = 1, hasDraft = true, alert = false, configured = true), states.first())
-
         world.settings.chooseCategory("travel")
         world.settings.categoryFellBack(Category("journal", "Journal"))
-        assertEquals(true, states.first().alert)
+        assertEquals(WidgetState(configured = true), states.first())
+
+        world.settings.setAuthError(true)
+        assertEquals(WidgetState(signInRejected = true, configured = true), states.first())
     }
 
     @Test

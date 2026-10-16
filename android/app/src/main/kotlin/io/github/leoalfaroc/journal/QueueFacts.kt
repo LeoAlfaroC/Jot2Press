@@ -10,8 +10,8 @@ data class QueueFacts(
     /** Entries in `GRACE` or `PENDING`. */
     val waiting: Int = 0,
     val failed: Int = 0,
-    /** The server has been failing on an entry for more than an hour. */
-    val stuck: Boolean = false,
+    /** Waiting entries the server has been failing on for more than an hour. */
+    val stuck: Int = 0,
     val hasDraft: Boolean = false,
 ) {
     val total: Int get() = waiting + failed
@@ -20,32 +20,32 @@ data class QueueFacts(
 fun queueFacts(entries: List<Entry>, now: Long): QueueFacts = QueueFacts(
     waiting = entries.count { it.state == EntryState.GRACE || it.state == EntryState.PENDING },
     failed = entries.count { it.state == EntryState.FAILED },
-    stuck = entries.any { it.isStuck(now) },
+    stuck = entries.count { it.isStuck(now) },
     hasDraft = entries.any { it.state == EntryState.DRAFT },
 )
 
 /** The one line that the queue row in settings shows. */
 fun queueSummary(facts: QueueFacts, authError: Boolean): String = when {
     authError -> if (facts.total == 0) "Password rejected" else "${facts.total} held: password rejected"
-    facts.stuck -> "${facts.total} held: server error"
+    facts.stuck > 0 -> "${facts.total} held: server error"
     facts.failed > 0 && facts.waiting > 0 -> "${facts.failed} failed, ${facts.waiting} waiting"
     facts.failed > 0 -> "${facts.failed} failed"
     facts.waiting > 0 -> "${facts.waiting} waiting"
     else -> "Empty"
 }
 
+/** The widget speaks only when the user has something to fix: waiting entries and a draft show nothing. */
 data class WidgetState(
-    /** Entries in `GRACE`, `PENDING` or `FAILED`. The widget hides it when zero. */
-    val count: Int = 0,
-    val hasDraft: Boolean = false,
-    val alert: Boolean = false,
-    /** False until `Test connection` has succeeded: the write button then opens settings. */
+    /** Entries the site refused, and entries stuck on server errors. */
+    val failed: Int = 0,
+    /** Nothing is sent until the credentials are fixed. */
+    val signInRejected: Boolean = false,
+    /** False until credentials are saved: the write button then opens settings. */
     val configured: Boolean = false,
 )
 
 fun widgetState(facts: QueueFacts, settings: Settings): WidgetState = WidgetState(
-    count = facts.total,
-    hasDraft = facts.hasDraft,
-    alert = settings.authError || facts.failed > 0 || facts.stuck || settings.categoryNotice != null,
+    failed = facts.failed + facts.stuck,
+    signInRejected = settings.authError,
     configured = settings.configured,
 )

@@ -37,7 +37,8 @@ Until `Test connection` has worked once, the widget's write button opens setting
 - The write button on the widget opens the capture dialog. `Send` stores the entry and closes the dialog.
 - An entry waits for the grace window, 60 seconds unless changed, before it is sent. During that time the dialog shows it at the top, with `Edit` and `Delete`.
 - Closing the dialog with text in it keeps the text as a draft.
-- The number on the widget is how many entries are still on the phone. Tapping it opens settings, whose first row leads to the queue.
+- The widget is one square. A red badge appears on its corner only when something needs fixing: a number for entries that failed to send, `!` when the site rejected the sign-in. Tapping the badge opens settings, whose first row leads to the queue. Entries waiting to be sent and a kept draft show nothing.
+- A widget added when it was two squares wide keeps that size after an update: remove it and add it again.
 
 ## Rename
 

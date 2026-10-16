@@ -4,12 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
@@ -20,13 +19,10 @@ import androidx.glance.background
 import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
-import androidx.glance.layout.Row
-import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.size
-import androidx.glance.layout.width
 import androidx.glance.semantics.contentDescription
 import androidx.glance.semantics.semantics
 import androidx.glance.text.FontWeight
@@ -68,52 +64,49 @@ class JournalWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = JournalWidget()
 }
 
-/** What a screen reader says for the status area. */
-fun statusDescription(state: WidgetState): String = listOfNotNull(
-    "Needs attention".takeIf { state.alert },
-    "${state.count} in the queue".takeIf { state.count > 0 },
-    "Unfinished draft".takeIf { state.hasDraft },
-    "Open settings",
-).joinToString(". ")
+/** What the badge shows, or null when there is no badge. A rejected sign-in comes first: nothing is sent until it is fixed. */
+fun badgeText(state: WidgetState): String? = when {
+    state.signInRejected -> "!"
+    state.failed > 99 -> "99+"
+    state.failed > 0 -> state.failed.toString()
+    else -> null
+}
 
-/** Two tap targets: the write button, and the status area, which opens settings. */
+/** What a screen reader says for the badge. */
+fun badgeDescription(state: WidgetState): String =
+    if (state.signInRejected) "The site rejected the sign-in. Open settings" else "${state.failed} failed to send. Open settings"
+
+private val BADGE = 26.dp
+
+/** One square: the write button, with a badge over its corner that opens settings when something needs fixing. */
 @Composable
 fun WidgetContent(state: WidgetState) {
     // The backgrounds are drawables, which take the same colours from colors.xml.
-    val app = ColorProvider(day = LightColors.app, night = DarkColors.app)
-    val label = TextStyle(color = app, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-    Row(
-        GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_sheet)).padding(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            GlanceModifier
-                .defaultWeight()
-                .fillMaxHeight()
-                .background(ImageProvider(R.drawable.widget_write))
-                // Until `Test connection` has succeeded there is nowhere to send an entry to.
-                .clickable(if (state.configured) actionStartActivity<CaptureActivity>() else actionStartActivity<SettingsActivity>()),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("Write", style = label.copy(color = ColorProvider(day = LightColors.onApp, night = DarkColors.onApp)))
+    Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
+        Box(GlanceModifier.fillMaxSize().padding(6.dp)) {
+            Box(
+                GlanceModifier
+                    .fillMaxSize()
+                    .background(ImageProvider(R.drawable.widget_write))
+                    // Until credentials are saved there is nowhere to send an entry to.
+                    .clickable(if (state.configured) actionStartActivity<CaptureActivity>() else actionStartActivity<SettingsActivity>()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Write",
+                    style = TextStyle(color = ColorProvider(day = LightColors.onApp, night = DarkColors.onApp), fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                )
+            }
         }
-        Spacer(GlanceModifier.width(6.dp))
-        Row(
-            GlanceModifier
-                .width(64.dp)
-                .fillMaxHeight()
-                .then(if (state.alert) GlanceModifier.background(ImageProvider(R.drawable.widget_alert)) else GlanceModifier)
-                .semantics { contentDescription = statusDescription(state) }
-                .clickable(actionStartActivity<SettingsActivity>()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (state.alert) Text("!", style = label)
-            if (state.alert && state.count > 0) Spacer(GlanceModifier.width(4.dp))
-            if (state.count > 0) Text(state.count.toString(), style = label)
-            if (state.hasDraft) {
-                if (state.alert || state.count > 0) Spacer(GlanceModifier.width(4.dp))
-                Image(ImageProvider(R.drawable.ic_draft), contentDescription = null, GlanceModifier.size(16.dp), colorFilter = ColorFilter.tint(app))
+        badgeText(state)?.let { text ->
+            Box(
+                (if (text.length == 1) GlanceModifier.size(BADGE) else GlanceModifier.height(BADGE).padding(horizontal = 8.dp))
+                    .background(ImageProvider(R.drawable.widget_badge))
+                    .semantics { contentDescription = badgeDescription(state) }
+                    .clickable(actionStartActivity<SettingsActivity>()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text, style = TextStyle(color = ColorProvider(day = Color.White, night = Color.White), fontSize = 13.sp, fontWeight = FontWeight.Bold))
             }
         }
     }

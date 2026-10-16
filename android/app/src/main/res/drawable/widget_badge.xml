@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same red in both themes. The ring, in the sheet colour, lifts the badge off the write button. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#E00016" />
+    <stroke android:width="2dp" android:color="@color/widget_sheet" />
+    <corners android:radius="13dp" />
+</shape>

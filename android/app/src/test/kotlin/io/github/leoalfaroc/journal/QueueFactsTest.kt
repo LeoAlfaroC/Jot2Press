@@ -21,15 +21,15 @@ class QueueFactsTest {
     fun `the queue is counted by state, and the draft is not part of it`() {
         val facts = facts(entry(EntryState.DRAFT), entry(EntryState.GRACE), entry(EntryState.PENDING), entry(EntryState.FAILED))
 
-        assertEquals(QueueFacts(waiting = 2, failed = 1, stuck = false, hasDraft = true), facts)
+        assertEquals(QueueFacts(waiting = 2, failed = 1, stuck = 0, hasDraft = true), facts)
         assertEquals(3, facts.total)
     }
 
     @Test
     fun `an entry is stuck once the server has failed on it for more than an hour`() {
-        assertEquals(false, facts(entry(EntryState.PENDING, failingSince = now - STUCK_AFTER_MILLIS)).stuck)
-        assertEquals(true, facts(entry(EntryState.PENDING, failingSince = now - STUCK_AFTER_MILLIS - 1)).stuck)
-        assertEquals(false, facts(entry(EntryState.PENDING)).stuck)
+        assertEquals(0, facts(entry(EntryState.PENDING, failingSince = now - STUCK_AFTER_MILLIS)).stuck)
+        assertEquals(1, facts(entry(EntryState.PENDING, failingSince = now - STUCK_AFTER_MILLIS - 1)).stuck)
+        assertEquals(0, facts(entry(EntryState.PENDING)).stuck)
     }
 
     @Test
@@ -51,17 +51,18 @@ class QueueFactsTest {
     }
 
     @Test
-    fun `the widget counts the queue, marks a draft, and alerts when something needs attention`() {
-        val quiet = widgetState(facts(entry(EntryState.GRACE), entry(EntryState.PENDING)), Settings(configured = true))
-        assertEquals(WidgetState(count = 2, hasDraft = false, alert = false, configured = true), quiet)
+    fun `the widget shows nothing for waiting entries, a draft or a category notice`() {
+        val quiet = facts(entry(EntryState.GRACE), entry(EntryState.PENDING), entry(EntryState.DRAFT), entry(EntryState.PENDING, failingSince = now - 60_000))
+        val settings = Settings(configured = true, categoryNotice = CategoryNotice("Travel", "Journal"))
 
-        assertEquals(WidgetState(hasDraft = true), widgetState(facts(entry(EntryState.DRAFT)), Settings()))
+        assertEquals(WidgetState(configured = true), widgetState(quiet, settings))
+    }
 
+    @Test
+    fun `the widget counts the entries that failed or are stuck, and says when the sign-in is rejected`() {
         val stuck = entry(EntryState.PENDING, failingSince = now - 2 * STUCK_AFTER_MILLIS)
-        assertEquals(true, widgetState(facts(entry(EntryState.FAILED)), Settings()).alert)
-        assertEquals(true, widgetState(facts(stuck), Settings()).alert)
-        assertEquals(true, widgetState(facts(), Settings(authError = true)).alert)
-        assertEquals(true, widgetState(facts(), Settings(categoryNotice = CategoryNotice("Travel", "Journal"))).alert)
-        assertEquals(false, widgetState(facts(entry(EntryState.PENDING, failingSince = now - 60_000)), Settings()).alert)
+
+        assertEquals(WidgetState(failed = 2), widgetState(facts(entry(EntryState.FAILED), stuck, entry(EntryState.PENDING)), Settings()))
+        assertEquals(WidgetState(signInRejected = true), widgetState(facts(entry(EntryState.PENDING)), Settings(authError = true)))
     }
 }
