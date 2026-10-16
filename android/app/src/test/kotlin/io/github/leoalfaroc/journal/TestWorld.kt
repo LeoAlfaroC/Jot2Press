@@ -18,6 +18,7 @@ import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.memoryDb
 import io.github.leoalfaroc.journal.location.FakeLocationSource
+import io.github.leoalfaroc.journal.location.FakeSearchService
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
@@ -52,6 +53,7 @@ class TestWorld(folder: File) {
 
     val photoFiles = PhotoFiles(File(folder, "photos"))
     val location = FakeLocationSource()
+    val search = FakeSearchService()
     val queue = Queue(db, clock, photoFiles) { "id-${++ids}" }
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, box)
@@ -93,6 +95,7 @@ class TestWorld(folder: File) {
                 galleryCopies += photo.name
             },
             location = location,
+            searchService = search,
             scheduler = scheduler,
             sender = sender,
             apiFor = apiFor,

@@ -27,3 +27,25 @@ class FakeLocationSource : LocationSource {
         positions.emit(fix)
     }
 }
+
+/** Starts unless told to refuse, as Android does when the app is not in the foreground. */
+class FakeSearchService : SearchService {
+    @Volatile var refuse = false
+
+    @Volatile var running = false
+        private set
+
+    @Volatile var starts = 0
+        private set
+
+    override fun start(): Boolean {
+        if (refuse) return false
+        starts++
+        running = true
+        return true
+    }
+
+    override fun stop() {
+        running = false
+    }
+}

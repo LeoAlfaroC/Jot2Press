@@ -19,7 +19,9 @@ import io.github.leoalfaroc.journal.data.PhotoFiles
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.location.AndroidLocationSource
+import io.github.leoalfaroc.journal.location.AndroidSearchService
 import io.github.leoalfaroc.journal.location.LocationSource
+import io.github.leoalfaroc.journal.location.SearchService
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
@@ -48,6 +50,8 @@ class AppContainer(
     val gallery: Gallery = Gallery { },
     /** The phone's position. */
     val location: LocationSource,
+    /** Keeps the search for a position going after the dialog closes. */
+    val searchService: SearchService,
     val scheduler: Scheduler,
     val sender: Sender,
     /** Makes the API for a set of credentials. `Test connection` uses it with credentials not saved yet. */
@@ -107,6 +111,7 @@ fun realContainer(app: Application): AppContainer {
         photoFiles = photoFiles,
         gallery = MediaStoreGallery(app.contentResolver, app.getString(R.string.app_name)),
         location = AndroidLocationSource(app, PhoneClock),
+        searchService = AndroidSearchService(app),
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
         sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
         apiFor = apiFor,
