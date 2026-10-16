@@ -5,15 +5,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.ImageProvider
+import androidx.glance.LocalSize
 import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.color.ColorProvider
@@ -50,6 +54,9 @@ fun widgetStates(container: AppContainer): Flow<WidgetState> =
     }.distinctUntilChanged()
 
 class JournalWidget : GlanceAppWidget() {
+    // The real size of the cell, so that the square fits inside it.
+    override val sizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val states = widgetStates((context.applicationContext as JournalApp).container)
         val first = states.first()
@@ -76,14 +83,27 @@ fun badgeText(state: WidgetState): String? = when {
 fun badgeDescription(state: WidgetState): String =
     if (state.signInRejected) "The site rejected the sign-in. Open settings" else "${state.failed} failed to send. Open settings"
 
-private val BADGE = 26.dp
+private val BADGE = 22.dp
+
+/** Room around the button for the badge to stand out over its corner. A one-cell widget can be as narrow as 45dp. */
+private val INSET = 4.dp
+
+/** Launchers seldom give a one-cell widget a square cell, so the square takes the shorter side. */
+fun squareSide(cell: DpSize): Dp = minOf(cell.width, cell.height)
 
 /** One square: the write button, with a badge over its corner that opens settings when something needs fixing. */
 @Composable
 fun WidgetContent(state: WidgetState) {
     // The backgrounds are drawables, which take the same colours from colors.xml.
-    Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.TopEnd) {
-        Box(GlanceModifier.fillMaxSize().padding(6.dp)) {
+    Box(GlanceModifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        WidgetSquare(state, GlanceModifier.size(squareSide(LocalSize.current)))
+    }
+}
+
+@Composable
+private fun WidgetSquare(state: WidgetState, modifier: GlanceModifier) {
+    Box(modifier, contentAlignment = Alignment.TopEnd) {
+        Box(GlanceModifier.fillMaxSize().padding(INSET)) {
             Box(
                 GlanceModifier
                     .fillMaxSize()
@@ -94,19 +114,19 @@ fun WidgetContent(state: WidgetState) {
             ) {
                 Text(
                     "Write",
-                    style = TextStyle(color = ColorProvider(day = LightColors.onApp, night = DarkColors.onApp), fontSize = 16.sp, fontWeight = FontWeight.Bold),
+                    style = TextStyle(color = ColorProvider(day = LightColors.onApp, night = DarkColors.onApp), fontSize = 13.sp, fontWeight = FontWeight.Bold),
                 )
             }
         }
         badgeText(state)?.let { text ->
             Box(
-                (if (text.length == 1) GlanceModifier.size(BADGE) else GlanceModifier.height(BADGE).padding(horizontal = 8.dp))
+                (if (text.length == 1) GlanceModifier.size(BADGE) else GlanceModifier.height(BADGE).padding(horizontal = 6.dp))
                     .background(ImageProvider(R.drawable.widget_badge))
                     .semantics { contentDescription = badgeDescription(state) }
                     .clickable(actionStartActivity<SettingsActivity>()),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text, style = TextStyle(color = ColorProvider(day = Color.White, night = Color.White), fontSize = 13.sp, fontWeight = FontWeight.Bold))
+                Text(text, style = TextStyle(color = ColorProvider(day = Color.White, night = Color.White), fontSize = 12.sp, fontWeight = FontWeight.Bold))
             }
         }
     }

@@ -1,6 +1,8 @@
 package io.github.leoalfaroc.journal.widget
 
 import android.content.ComponentName
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
 import androidx.glance.testing.unit.assertHasStartActivityClickAction
 import androidx.glance.testing.unit.hasContentDescription
@@ -76,6 +78,22 @@ class JournalWidgetTest {
         onNode(hasText("!")).assertExists()
         onNode(hasText("2")).assertDoesNotExist()
         onNode(hasContentDescription("The site rejected the sign-in. Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
+    }
+
+    @Test
+    fun `the square takes the shorter side of a cell that is not square`() {
+        assertEquals(51.dp, squareSide(DpSize(51.dp, 72.dp)))
+        assertEquals(64.dp, squareSide(DpSize(90.dp, 64.dp)))
+    }
+
+    @Test
+    fun `in a tall cell the write button and the badge are still there`() = runGlanceAppWidgetUnitTest {
+        setContext(world.context)
+        setAppWidgetSize(DpSize(51.dp, 72.dp))
+        provideComposable { WidgetContent(WidgetState(failed = 1, configured = true)) }
+
+        onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
+        onNode(hasContentDescription("1 failed to send. Open settings")).assertExists()
     }
 
     @Test
