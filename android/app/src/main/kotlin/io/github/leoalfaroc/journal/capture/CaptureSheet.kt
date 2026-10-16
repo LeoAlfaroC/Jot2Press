@@ -60,6 +60,21 @@ import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.unit.sp
 import io.github.leoalfaroc.journal.Trouble
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.painterResource
+import io.github.leoalfaroc.journal.R
+import io.github.leoalfaroc.journal.data.DraftPhoto
 import io.github.leoalfaroc.journal.ui.AlertRed
 import io.github.leoalfaroc.journal.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.journal.ui.Corner
@@ -86,13 +101,24 @@ class CaptureActions(
     val fix: () -> Unit = {},
     /** Opens the queue, where entries that could not be sent are retried or deleted. */
     val review: () -> Unit = {},
+    /** Opens the camera app for one photo. */
+    val takePhoto: () -> Unit = {},
+    /** Opens the system photo picker for what is left of the 10. */
+    val choosePhotos: () -> Unit = {},
+    val removePhoto: (String) -> Unit = {},
 )
 
 const val SIGN_IN_NOTICE = "The site rejected the sign-in. Entries wait on the phone."
 
 /** The whole window: the sheet at the bottom, on top of the keyboard. A tap anywhere else closes the dialog. */
 @Composable
-fun CaptureScreen(ui: CaptureUi, actions: CaptureActions, now: () -> Long, onDismiss: () -> Unit) {
+fun CaptureScreen(
+    ui: CaptureUi,
+    actions: CaptureActions,
+    now: () -> Long,
+    onDismiss: () -> Unit,
+    loadThumbnail: suspend (DraftPhoto) -> ImageBitmap? = { null },
+) {
     Box(Modifier.fillMaxSize()) {
         // Beside the sheet, not around it: a clickable parent would merge the sheet's semantics into its own.
         Box(
@@ -112,6 +138,7 @@ fun CaptureScreen(ui: CaptureUi, actions: CaptureActions, now: () -> Long, onDis
                     .pointerInput(Unit) { detectTapGestures { } },
                 // The keyboard, or the navigation bar when the keyboard is closed: the sheet's white runs under them.
                 insets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                loadThumbnail = loadThumbnail,
             )
         }
     }
@@ -124,6 +151,7 @@ fun CaptureSheet(
     now: () -> Long,
     modifier: Modifier = Modifier,
     insets: WindowInsets = WindowInsets(0),
+    loadThumbnail: suspend (DraftPhoto) -> ImageBitmap? = { null },
 ) {
     val colors = LocalJournalColors.current
     val current by rememberUpdatedState(actions)
@@ -148,14 +176,19 @@ fun CaptureSheet(
             .windowInsetsPadding(insets)
             .semantics { paneTitle = "New entry" }
             // The notice and the line about the last entry bring their own height, so the sheet gives them less room above.
-            .padding(start = 20.dp, end = 20.dp, top = if (ui.trouble != null || ui.lastEntry != null) 6.dp else 16.dp, bottom = 16.dp),
+            .padding(start = SHEET_PADDING, end = SHEET_PADDING, top = if (ui.trouble != null || ui.lastEntry != null) 6.dp else 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ui.trouble?.let { Notice(it, actions) }
         ui.lastEntry?.let { LastEntryLine(it, canEdit = ui.canEditLast, actions = actions) }
         Header(ui, actions)
         Editor(ui, actions)
-        SendButton(enabled = ui.canSend, onClick = actions.send)
+        if (ui.photos.isNotEmpty()) PhotoRow(ui.photos, actions.removePhoto, loadThumbnail)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PhotoButton(R.drawable.ic_camera, "Take photo", ui.canAddPhotos, actions.takePhoto)
+            PhotoButton(R.drawable.ic_photos, "Choose photos", ui.canAddPhotos, actions.choosePhotos)
+            SendButton(enabled = ui.canSend, onClick = actions.send, modifier = Modifier.padding(start = 8.dp).weight(1f))
+        }
     }
 }
 
@@ -308,11 +341,10 @@ private fun Editor(ui: CaptureUi, actions: CaptureActions) {
 
 /** The only filled control. Disabled, it is an outline, not a faded button. */
 @Composable
-private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
+private fun SendButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalJournalColors.current
     Box(
-        Modifier
-            .fillMaxWidth()
+        modifier
             .heightIn(min = 52.dp)
             .clip(Corner)
             .then(if (enabled) Modifier.background(colors.app) else Modifier.border(2.dp, colors.app, Corner))
@@ -322,3 +354,75 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit) {
         Text("Send", style = JournalType.send, color = if (enabled) colors.onApp else colors.app)
     }
 }
+
+/** An icon without a border. At 10 photos it turns the quiet grey and stops answering. */
+@Composable
+private fun PhotoButton(@DrawableRes icon: Int, label: String, enabled: Boolean, onClick: () -> Unit) {
+    val colors = LocalJournalColors.current
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(Corner)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(painterResource(icon), contentDescription = null, colorFilter = ColorFilter.tint(if (enabled) colors.app else colors.quiet))
+    }
+}
+
+/**
+ * The photos in the order they were added. The row runs past the sheet's padding to its right edge,
+ * so that a thumbnail cut by the edge says there are more.
+ */
+@Composable
+private fun PhotoRow(photos: List<DraftPhoto>, remove: (String) -> Unit, loadThumbnail: suspend (DraftPhoto) -> ImageBitmap?) {
+    LazyRow(
+        Modifier.layout { measurable, constraints ->
+            val bleed = SHEET_PADDING.roundToPx()
+            val width = constraints.maxWidth + bleed
+            val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+            layout(constraints.maxWidth, placeable.height) { placeable.place(0, 0) }
+        },
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(end = SHEET_PADDING),
+    ) {
+        itemsIndexed(photos, key = { _, photo -> photo.id }) { index, photo ->
+            Thumbnail(photo, index + 1, photos.size, remove, loadThumbnail)
+        }
+    }
+}
+
+@Composable
+private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (String) -> Unit, load: suspend (DraftPhoto) -> ImageBitmap?) {
+    val colors = LocalJournalColors.current
+    val image by produceState<ImageBitmap?>(null, photo.id) { value = load(photo) }
+    Box(
+        Modifier
+            .size(72.dp)
+            .clip(ThumbnailShape)
+            .background(colors.quiet.copy(alpha = 0.2f))
+            .semantics { contentDescription = "Photo $number of $total" },
+    ) {
+        image?.let { Image(it, contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+        // Drawn small in the corner; the area that answers is 48 dp.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .size(48.dp)
+                .clickable(role = Role.Button) { remove(photo.id) }
+                .semantics { contentDescription = "Remove photo $number" },
+            contentAlignment = Alignment.TopEnd,
+        ) {
+            Box(
+                Modifier.padding(4.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.62f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(painterResource(R.drawable.ic_close), contentDescription = null)
+            }
+        }
+    }
+}
+
+private val ThumbnailShape = RoundedCornerShape(8.dp)
+private val SHEET_PADDING = 20.dp

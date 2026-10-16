@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.journal.Trouble
+import io.github.leoalfaroc.journal.data.DraftPhoto
 import io.github.leoalfaroc.journal.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.journal.ui.JournalTheme
 import org.junit.Assert.assertEquals
@@ -39,6 +40,9 @@ class CaptureSheetTest {
         refresh = { calls += "refresh" },
         fix = { calls += "fix" },
         review = { calls += "review" },
+        takePhoto = { calls += "takePhoto" },
+        choosePhotos = { calls += "choosePhotos" },
+        removePhoto = { calls += "removePhoto:$it" },
     )
     private val blank = CaptureUi(ready = true, day = LocalDate.of(2026, 10, 11))
     private val coffee = LastEntry(id = "id-1", time = "14:32", excerpt = "Coffee with Ana")
@@ -190,5 +194,49 @@ class CaptureSheetTest {
         show(blank.copy(trouble = Trouble.SignInRejected))
         compose.onNode(hasSetTextAction()).performTextInput("Coffee")
         assertEquals(listOf("type:Coffee"), calls)
+    }
+
+    private fun photos(count: Int) = List(count) { DraftPhoto("photo-${it + 1}", "photo-${it + 1}.jpg") }
+
+    @Test
+    fun `the camera and photos buttons sit beside Send and say what they do`() {
+        show(blank)
+
+        compose.onNodeWithContentDescription("Take photo").assertIsEnabled().performClick()
+        compose.onNodeWithContentDescription("Choose photos").assertIsEnabled().performClick()
+
+        assertEquals(listOf("takePhoto", "choosePhotos"), calls)
+        val send = compose.onNodeWithText("Send").getUnclippedBoundsInRoot()
+        val photos = compose.onNodeWithContentDescription("Choose photos").getUnclippedBoundsInRoot()
+        assertTrue(photos.right <= send.left)
+    }
+
+    @Test
+    fun `photos show as thumbnails, each one removable, and they alone allow Send and Discard`() {
+        show(blank.copy(photos = photos(3)))
+
+        compose.onNodeWithContentDescription("Photo 2 of 3").assertExists()
+        compose.onNodeWithContentDescription("Remove photo 2").performClick()
+        compose.onNodeWithText("Send").assertIsEnabled()
+        compose.onNodeWithText("Discard").assertExists()
+
+        assertEquals(listOf("removePhoto:photo-2"), calls)
+    }
+
+    @Test
+    fun `at 10 photos both buttons stop working`() {
+        show(blank.copy(photos = photos(10)))
+
+        compose.onNodeWithContentDescription("Take photo").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Choose photos").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `a remove mark answers to a touch area of 48 dp`() {
+        show(blank.copy(photos = photos(1)))
+
+        val mark = compose.onNodeWithContentDescription("Remove photo 1").getUnclippedBoundsInRoot()
+        assertEquals(48f, (mark.right - mark.left).value, 0.5f)
+        assertEquals(48f, (mark.bottom - mark.top).value, 0.5f)
     }
 }
