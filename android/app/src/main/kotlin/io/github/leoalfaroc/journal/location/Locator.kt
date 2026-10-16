@@ -39,7 +39,8 @@ class Locator(
     }
 
     private val mutex = Mutex()
-    private var dialog = false
+    /** The dialogs that want positions. */
+    private val owners = mutableSetOf<Any>()
     private var best: Fix? = null
     private val searches = mutableMapOf<String, Search>()
     private var stream: Job? = null
@@ -53,9 +54,12 @@ class Locator(
     /** A new dialog: the last one's best position is not this one's. */
     suspend fun opened() = mutex.withLock { best = null }
 
-    /** Whether the dialog wants positions: in sight, with the pin shown and on. */
-    suspend fun listen(on: Boolean) = mutex.withLock {
-        dialog = on
+    /**
+     * Whether `owner`, a dialog, wants positions: in sight, with the pin shown and on. Listening belongs to the dialog
+     * that asked for it, because Android may stop a closing dialog long after the next one has started.
+     */
+    suspend fun listen(owner: Any, on: Boolean) = mutex.withLock {
+        if (on) owners.add(owner) else owners.remove(owner)
         settle()
     }
 
@@ -86,7 +90,7 @@ class Locator(
 
     /** A position, or a tick when `fix` is null. Runs under the lock. */
     private suspend fun step(fix: Fix?) {
-        if (fix != null && dialog && fix.accuracy < (best?.accuracy ?: Float.MAX_VALUE)) best = fix
+        if (fix != null && owners.isNotEmpty() && fix.accuracy < (best?.accuracy ?: Float.MAX_VALUE)) best = fix
         val now = clock.millis()
         for ((id, search) in searches.toList()) {
             val done = when {
@@ -106,7 +110,7 @@ class Locator(
 
     /** Listens while anything wants positions. The service stops when no entry is searched for and no dialog listens. */
     private fun settle() {
-        val wanted = dialog || searches.isNotEmpty()
+        val wanted = owners.isNotEmpty() || searches.isNotEmpty()
         if (wanted && stream == null) {
             stream = scope.launch {
                 merge<Fix?>(source.updates(), ticks.map { null }).collect { fix ->
@@ -119,7 +123,7 @@ class Locator(
             stream?.cancel()
             stream = null
         }
-        if (serviceOn && searches.isEmpty() && !dialog) {
+        if (serviceOn && searches.isEmpty() && owners.isEmpty()) {
             service.stop()
             serviceOn = false
         }

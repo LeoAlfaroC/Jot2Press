@@ -227,7 +227,7 @@ class CaptureModel(
 
     private suspend fun listen() {
         val ui = state.value
-        locator.listen(inSight && !ui.closed && ui.showPin && ui.pinOn)
+        locator.listen(this, inSight && !ui.closed && ui.showPin && ui.pinOn)
     }
 
     private suspend fun look() {

@@ -31,6 +31,9 @@ class LocatorTest {
     @After
     fun close() = world.close()
 
+    /** The capture dialog, as the owner of the listening. */
+    private val dialog = Any()
+
     private suspend fun lat(id: String): Double? = world.entries().single { it.id == id }.lat
 
     /** Writes and sends an entry with the pin on, as the dialog does, and hands it to the search. */
@@ -44,7 +47,7 @@ class LocatorTest {
     @Test
     fun `at Send the best position found while the dialog listened is taken, before any last known one`() = runTest {
         locator.opened()
-        locator.listen(true)
+        locator.listen(dialog, true)
         world.position(world.fix(40f, lat = 1.0))
         world.position(world.fix(15f, lat = 2.0))
         world.position(world.fix(30f, lat = 3.0))
@@ -68,9 +71,9 @@ class LocatorTest {
     @Test
     fun `a new dialog does not take the last one's position`() = runTest {
         locator.opened()
-        locator.listen(true)
+        locator.listen(dialog, true)
         world.position(world.fix(15f))
-        locator.listen(false)
+        locator.listen(dialog, false)
 
         locator.opened()
 
@@ -79,11 +82,11 @@ class LocatorTest {
 
     @Test
     fun `the dialog listens only while it asks to, and no service runs for it`() = runTest {
-        locator.listen(true)
+        locator.listen(dialog, true)
         world.location.subscribers.first { it > 0 }
         assertFalse(world.search.running)
 
-        locator.listen(false)
+        locator.listen(dialog, false)
         world.location.subscribers.first { it == 0 }
     }
 
@@ -212,12 +215,12 @@ class LocatorTest {
 
     @Test
     fun `the service stays while a dialog listens, and stops once it no longer does`() = runTest {
-        locator.listen(true)
+        locator.listen(dialog, true)
         sent("Coffee")
         world.position(world.fix(10f))
         assertTrue(world.search.running)
 
-        locator.listen(false)
+        locator.listen(dialog, false)
 
         assertFalse(world.search.running)
     }

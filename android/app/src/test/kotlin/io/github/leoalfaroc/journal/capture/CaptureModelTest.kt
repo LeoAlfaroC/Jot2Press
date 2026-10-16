@@ -611,4 +611,75 @@ class CaptureModelTest {
         assertFalse(model.ui.value.showPin)
         world.location.subscribers.first { it == 0 }
     }
+
+    @Test
+    fun `a dialog stopped after the next one started does not stop the next one's listening`() = runTest {
+        locationOn()
+        val first = opened()
+        first.shown(true)
+        world.location.subscribers.first { it > 0 }
+
+        val second = opened()
+        second.shown(true)
+        first.shown(false)
+
+        assertTrue(world.location.subscribers.value > 0)
+
+        second.shown(false)
+        world.location.subscribers.first { it == 0 }
+    }
+
+    @Test
+    fun `discarding stops the listening`() = runTest {
+        locationOn()
+        val model = opened()
+        model.shown(true)
+        model.type("Coffee")
+        world.location.subscribers.first { it > 0 }
+
+        model.askDiscard()
+        model.confirmDiscard()
+
+        world.location.subscribers.first { it == 0 }
+    }
+
+    @Test
+    fun `a Send that starts no search stops the listening once the dialog is closed`() = runTest {
+        locationOn()
+        world.location.last = world.fix(12f, lat = 3.0)
+        opened().apply {
+            type("Coffee")
+            send()
+        }
+        val model = opened()
+        model.shown(true)
+        model.editLast()
+        world.location.subscribers.first { it > 0 }
+
+        model.send()
+
+        assertTrue(model.ui.value.closed)
+        assertEquals(0, world.search.starts)
+        world.location.subscribers.first { it == 0 }
+    }
+
+    @Test
+    fun `Edit with the pin turned off meanwhile listens again when the entry brings the pin back on`() = runTest {
+        locationOn()
+        world.location.last = world.fix(12f, lat = 3.0)
+        opened().apply {
+            type("Coffee")
+            send()
+        }
+        val model = opened()
+        model.shown(true)
+        model.togglePin()
+        model.rememberPin()
+        world.location.subscribers.first { it == 0 }
+
+        model.editLast()
+
+        assertTrue(model.ui.value.pinOn)
+        world.location.subscribers.first { it > 0 }
+    }
 }
