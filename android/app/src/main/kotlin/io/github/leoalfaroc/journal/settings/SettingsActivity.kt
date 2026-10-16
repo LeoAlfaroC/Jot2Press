@@ -108,10 +108,10 @@ class SettingsActivity : ComponentActivity() {
     private val viewModel: SettingsViewModel by viewModels { SettingsViewModel.Factory }
 
     companion object {
-        /** Starts on the queue screen, where entries that could not be sent are retried or deleted. */
         /** Asked together, so that Android 12 and later offer the choice between precise and approximate. */
         private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
+        /** Starts on the queue screen, where entries that could not be sent are retried or deleted. */
         const val OPEN_QUEUE = "io.github.leoalfaroc.journal.OPEN_QUEUE"
 
         fun queueIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java).putExtra(OPEN_QUEUE, true)
