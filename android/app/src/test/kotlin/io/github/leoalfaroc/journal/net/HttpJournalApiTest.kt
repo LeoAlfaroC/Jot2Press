@@ -12,6 +12,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -87,12 +88,14 @@ class HttpJournalApiTest {
         val request = server.takeRequest()
         assertEquals("POST", request.method)
         assertTrue(request.headers["Content-Type"]!!.startsWith("application/json"))
+        val body = request.body!!.utf8()
         assertEquals(
             Json.parseToJsonElement(
                 """{"id":"0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e","written_at":"2026-10-11T14:32:05-05:00","text":"Café with \"Ana\" <3\nsecond line","title":"2026-10-11 · Sunday, October 11","category":"travel","post_status":"private"}""",
             ),
-            Json.parseToJsonElement(request.body!!.utf8()),
+            Json.parseToJsonElement(body),
         )
+        assertFalse("photo_ids" in body)
     }
 
     @Test
@@ -201,5 +204,46 @@ class HttpJournalApiTest {
     fun `an address that is not one is unreachable`() = runTest {
         val api = HttpJournalApi(journalHttpClient(), Credentials("not an address", "leo", "abcd"))
         assertEquals(ApiResult.Unreachable("The site URL is not a valid address."), api.status())
+    }
+
+    @Test
+    fun `a photo goes as multipart with its id, and created or duplicate both count`() = runTest {
+        val photo = kotlin.io.path.createTempFile(suffix = ".jpg").toFile().apply { writeBytes(byteArrayOf(-1, -40, -1, 1, 2, 3)) }
+        answer(201, """{"status":"created","attachment_id":12}""")
+        answer(200, """{"status":"duplicate","attachment_id":12}""")
+
+        assertEquals(ApiResult.Ok(Unit), api().uploadPhoto("0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e", photo, "image/jpeg"))
+        assertEquals(ApiResult.Ok(Unit), api().uploadPhoto("0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e", photo, "image/jpeg"))
+
+        val request = server.takeRequest()
+        assertEquals("POST", request.method)
+        assertTrue(request.url.encodedPath.endsWith("/journal/v1/photos"))
+        assertTrue(request.headers["Content-Type"]!!.startsWith("multipart/form-data"))
+        val body = request.body!!.utf8()
+        assertTrue(body.contains("name=\"id\""))
+        assertTrue(body.contains("0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e"))
+        assertTrue(body.contains("name=\"photo\"; filename=\"0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e.jpg\""))
+        assertTrue(body.contains("Content-Type: image/jpeg"))
+    }
+
+    @Test
+    fun `a refused photo says why, and a 413 without a body says it was too large`() = runTest {
+        val photo = kotlin.io.path.createTempFile(suffix = ".jpg").toFile().apply { writeBytes(byteArrayOf(-1, -40, -1)) }
+        answer(413, "<html>Request Entity Too Large</html>")
+
+        val refused = api().uploadPhoto("0b6d3f0e-5c1a-4f6e-9d57-1c2a3b4c5d6e", photo, "image/jpeg") as ApiResult.Refused
+
+        assertEquals(413, refused.status)
+        assertEquals(HttpJournalApi.TOO_LARGE, refused.message)
+    }
+
+    @Test
+    fun `an entry with photos lists their ids in order`() = runTest {
+        answer(201, """{"status":"created","post_id":7}""")
+
+        api().sendEntry(entry.copy(text = "", photoIds = listOf("a", "b")))
+
+        val body = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
+        assertEquals("[\"a\",\"b\"]", body.getValue("photo_ids").toString())
     }
 }

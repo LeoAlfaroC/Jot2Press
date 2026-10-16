@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -20,10 +22,13 @@ import okhttp3.Callback
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -43,7 +48,10 @@ sealed interface ApiResult<out T> {
     data class Unreachable(val reason: String) : ApiResult<Nothing>
 }
 
-/** One entry as the plugin's `POST /entries` takes it. `title` and `category` are left out when null. */
+/**
+ * One entry as the plugin's `POST /entries` takes it. `title` and `category` are left out when null.
+ * `photoIds` are the photos uploaded ahead of the entry, in the order they show; `photo_ids` is left out when empty.
+ */
 data class EntryPayload(
     val id: String,
     val writtenAt: String,
@@ -51,6 +59,7 @@ data class EntryPayload(
     val title: String?,
     val category: String?,
     val postStatus: String,
+    val photoIds: List<String> = emptyList(),
 )
 
 /** The plugin stored the entry, or had stored it before. */
@@ -59,6 +68,9 @@ data class EntrySent(val duplicate: Boolean, val categoryFallback: Category?)
 interface JournalApi {
     suspend fun status(): ApiResult<SiteStatus>
     suspend fun sendEntry(entry: EntryPayload): ApiResult<EntrySent>
+
+    /** Uploads one photo ahead of the entry that lists it. The site answers the same for a photo it already has. */
+    suspend fun uploadPhoto(id: String, file: File, mediaType: String): ApiResult<Unit>
 }
 
 /**
@@ -93,6 +105,7 @@ class HttpJournalApi(private val client: OkHttpClient, private val credentials: 
             entry.title?.let { put("title", it) }
             entry.category?.let { put("category", it) }
             put("post_status", entry.postStatus)
+            if (entry.photoIds.isNotEmpty()) put("photo_ids", buildJsonArray { entry.photoIds.forEach { add(it) } })
         }.toString().toRequestBody(JSON)
         return call("entries", { post(body) }) { json ->
             val duplicate = when (json.text("status")) {
@@ -101,6 +114,20 @@ class HttpJournalApi(private val client: OkHttpClient, private val credentials: 
                 else -> throw IllegalArgumentException("Not an answer of the plugin")
             }
             EntrySent(duplicate, (json["category_fallback"] as? JsonObject)?.category())
+        }
+    }
+
+    override suspend fun uploadPhoto(id: String, file: File, mediaType: String): ApiResult<Unit> {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("id", id)
+            .addFormDataPart("photo", "$id.${EXTENSIONS[mediaType] ?: "jpg"}", file.asRequestBody(mediaType.toMediaType()))
+            .build()
+        return call("photos", { post(body) }) { json ->
+            when (json.text("status")) {
+                "created", "duplicate" -> Unit
+                else -> throw IllegalArgumentException("Not an answer of the plugin")
+            }
         }
     }
 
@@ -180,5 +207,8 @@ class HttpJournalApi(private val client: OkHttpClient, private val credentials: 
         private const val ROUTES = "/wp-json/journal/v1/"
         private const val MAX_ANSWER_BYTES = 256 * 1024L
         private val JSON = "application/json; charset=utf-8".toMediaType()
+
+        /** The file name's extension matches the type, as WordPress checks the two against each other. */
+        private val EXTENSIONS = mapOf("image/jpeg" to "jpg", "image/png" to "png", "image/webp" to "webp")
     }
 }
