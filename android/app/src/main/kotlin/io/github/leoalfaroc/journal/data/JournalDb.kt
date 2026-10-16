@@ -33,6 +33,10 @@ interface EntryDao {
     @Query("UPDATE entries SET state = 'PENDING', graceEndsAt = NULL WHERE state = 'GRACE' AND graceEndsAt <= :now")
     suspend fun promoteDue(now: Long): Int
 
+    /** Writes only while the entry is in its grace window, so that it never races the sender. Returns the rows changed. */
+    @Query("UPDATE entries SET lat = :lat, lng = :lng WHERE id = :id AND state = 'GRACE' AND graceEndsAt > :now")
+    suspend fun place(id: String, lat: Double, lng: Double, now: Long): Int
+
     @Upsert
     suspend fun put(entry: Entry)
 
@@ -64,7 +68,7 @@ interface PhotoDao {
     suspend fun clearUploaded(entryId: String)
 }
 
-@Database(entities = [Entry::class, Photo::class], version = 2, exportSchema = true)
+@Database(entities = [Entry::class, Photo::class], version = 3, exportSchema = true)
 abstract class JournalDb : RoomDatabase() {
     abstract fun entries(): EntryDao
     abstract fun photos(): PhotoDao
@@ -85,6 +89,13 @@ abstract class JournalDb : RoomDatabase() {
                         "FOREIGN KEY(`entryId`) REFERENCES `entries`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_photos_entryId` ON `photos` (`entryId`)")
+            }
+        }
+
+        /** Adds whether each entry sends its position. Keeps every entry and photo; none of them attaches one. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `entries` ADD COLUMN `attachLocation` INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

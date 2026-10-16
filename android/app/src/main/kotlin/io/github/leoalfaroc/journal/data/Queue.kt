@@ -1,6 +1,7 @@
 package io.github.leoalfaroc.journal.data
 
 import androidx.room.withTransaction
+import io.github.leoalfaroc.journal.location.Fix
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
@@ -74,11 +75,14 @@ class Queue(
     /**
      * Sends the draft: it waits out the grace window, or is ready at once when the window is 0.
      * `writtenAt` is set the first time an entry is sent and never changes afterwards.
+     * `attachLocation` is the pin as it was at `Send`. With it on, an entry that has no position yet takes `position`;
+     * one sent again after `Edit` keeps the one it has. With it off nothing is stored, and a position kept stays unsent.
      * Returns null when there is nothing to send.
      */
-    suspend fun send(graceSeconds: Int): Entry? = db.withTransaction {
+    suspend fun send(graceSeconds: Int, attachLocation: Boolean = false, position: Fix? = null): Entry? = db.withTransaction {
         val draft = dao.draft()?.takeIf { it.text.isNotBlank() || photoDao.of(it.id).isNotEmpty() } ?: return@withTransaction null
         val now = OffsetDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS)
+        val taken = position?.takeIf { attachLocation && draft.lat == null }
         val sent = draft.copy(
             state = if (graceSeconds > 0) EntryState.GRACE else EntryState.PENDING,
             writtenAt = draft.writtenAt ?: WRITTEN_AT.format(now),
@@ -87,6 +91,9 @@ class Queue(
             lastError = null,
             lastErrorCode = null,
             failingSince = null,
+            attachLocation = attachLocation,
+            lat = taken?.lat ?: draft.lat,
+            lng = taken?.lng ?: draft.lng,
         )
         dao.put(sent)
         sent
@@ -99,6 +106,12 @@ class Queue(
 
     /** The most recent sent entry, when it is still inside its grace window. */
     suspend fun latestInGrace(): Entry? = dao.latestSent()?.takeIf { it.isInGrace() }
+
+    /** Whether the entry is still in its grace window: a search for its position goes on only while it is. */
+    suspend fun stillInGrace(id: String): Boolean = dao.byId(id)?.isInGrace() == true
+
+    /** Stores a better position for an entry in its grace window. False, and nothing changes, once it has left it. */
+    suspend fun placeLocation(id: String, position: Fix): Boolean = dao.place(id, position.lat, position.lng, clock.millis()) > 0
 
     /**
      * Takes an entry back from its grace window into the editor.

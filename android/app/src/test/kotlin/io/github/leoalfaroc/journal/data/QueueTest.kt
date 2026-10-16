@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.journal.TestClock
+import io.github.leoalfaroc.journal.location.Fix
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -387,5 +388,65 @@ class QueueTest {
         queue.markFailed(entry.id, "Rejected")
         queue.retry(entry.id)
         assertTrue(queue.observe().first().isEmpty())
+    }
+
+    private fun fix(accuracy: Float, lat: Double) = Fix(lat, -74.08175, accuracy, clock.millis())
+
+    @Test
+    fun `Send stores whether the entry attaches its location, with the position it takes`() = runTest {
+        queue.saveDraft("Coffee")
+        val entry = queue.send(60, attachLocation = true, position = fix(30f, lat = 4.6))!!
+
+        val kept = stored(entry.id)!!
+        assertTrue(kept.attachLocation)
+        assertEquals(4.6, kept.lat!!, 0.0)
+        assertEquals(-74.08175, kept.lng!!, 0.0)
+        assertEquals(kept, entry)
+    }
+
+    @Test
+    fun `with the pin off no position is stored`() = runTest {
+        queue.saveDraft("Coffee")
+        val entry = queue.send(60, attachLocation = false, position = fix(30f, lat = 4.6))!!
+
+        assertFalse(stored(entry.id)!!.attachLocation)
+        assertNull(stored(entry.id)!!.lat)
+    }
+
+    @Test
+    fun `an entry sent again after Edit keeps its position, and keeps it on the phone when the pin is then off`() = runTest {
+        queue.saveDraft("Coffee")
+        val entry = queue.send(60, attachLocation = true, position = fix(30f, lat = 4.6))!!
+        queue.takeBack(entry.id)
+        queue.send(60, attachLocation = true, position = fix(5f, lat = 9.9))
+        assertEquals(4.6, stored(entry.id)!!.lat!!, 0.0)
+
+        queue.takeBack(entry.id)
+        queue.send(60, attachLocation = false)
+
+        val kept = stored(entry.id)!!
+        assertFalse(kept.attachLocation)
+        assertEquals(4.6, kept.lat!!, 0.0)
+    }
+
+    @Test
+    fun `a better position is stored only while the entry is in its grace window`() = runTest {
+        queue.saveDraft("Coffee")
+        val entry = queue.send(60, attachLocation = true)!!
+        assertTrue(queue.stillInGrace(entry.id))
+        assertTrue(queue.placeLocation(entry.id, fix(12f, lat = 4.6)))
+        assertEquals(4.6, stored(entry.id)!!.lat!!, 0.0)
+
+        queue.takeBack(entry.id)
+        assertFalse(queue.stillInGrace(entry.id))
+        assertFalse(queue.placeLocation(entry.id, fix(8f, lat = 5.0)))
+
+        queue.send(60, attachLocation = true)
+        clock.advance(Duration.ofSeconds(60))
+        // Still GRACE until the sender promotes it, but its window has ended.
+        assertEquals(EntryState.GRACE, stored(entry.id)!!.state)
+        assertFalse(queue.stillInGrace(entry.id))
+        assertFalse(queue.placeLocation(entry.id, fix(8f, lat = 5.0)))
+        assertEquals(4.6, stored(entry.id)!!.lat!!, 0.0)
     }
 }

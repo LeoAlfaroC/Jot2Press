@@ -87,7 +87,7 @@ fun realContainer(app: Application): AppContainer {
         corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     ) { app.preferencesDataStoreFile(SettingsStore.NAME) }
-    val db = Room.databaseBuilder(app, JournalDb::class.java, JournalDb.NAME).addMigrations(JournalDb.MIGRATION_1_2).build()
+    val db = Room.databaseBuilder(app, JournalDb::class.java, JournalDb.NAME).addMigrations(JournalDb.MIGRATION_1_2, JournalDb.MIGRATION_2_3).build()
     val photoFiles = PhotoFiles(File(app.filesDir, "photos"))
     val queue = Queue(db, PhoneClock, photoFiles)
     val settings = SettingsStore(store)
