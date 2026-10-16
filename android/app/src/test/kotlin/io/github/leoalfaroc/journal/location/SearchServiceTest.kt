@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -22,8 +23,12 @@ import org.robolectric.Shadows.shadowOf
 class SearchServiceTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
 
+    @Before
+    fun freshState() = LocationService.reset()
+
     @Test
     fun `the service stands in the foreground with its silent notification`() {
+        AndroidSearchService(app).start()
         val service = Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1).get()
 
         val notification = shadowOf(service).lastForegroundNotification
@@ -43,8 +48,44 @@ class SearchServiceTest {
         assertTrue(search.start())
         assertEquals(LocationService::class.java.name, shadowOf(app).nextStartedService.component?.className)
 
+        Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1)
         search.stop()
         assertEquals(LocationService::class.java.name, shadowOf(app).nextStoppedService.component?.className)
+    }
+
+    @Test
+    fun `a stop before the service reaches the foreground waits for it, and then the service stops itself`() {
+        val search = AndroidSearchService(app)
+        search.start()
+
+        search.stop()
+        assertNull(shadowOf(app).nextStoppedService)
+
+        val controller = Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1)
+        assertTrue(shadowOf(controller.get()).isStoppedBySelf)
+        assertTrue(shadowOf(controller.get()).isForegroundStopped)
+        assertFalse(shadowOf(controller.get()).isLastForegroundNotificationAttached)
+    }
+
+    @Test
+    fun `a stop once the service is in the foreground stops it`() {
+        val search = AndroidSearchService(app)
+        search.start()
+        Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1)
+
+        search.stop()
+
+        assertEquals(LocationService::class.java.name, shadowOf(app).nextStoppedService.component?.className)
+    }
+
+    @Test
+    fun `a service that is still wanted stays in the foreground`() {
+        AndroidSearchService(app).start()
+
+        val service = Robolectric.buildService(LocationService::class.java).create().startCommand(0, 1).get()
+
+        assertFalse(shadowOf(service).isStoppedBySelf)
+        assertTrue(shadowOf(service).isLastForegroundNotificationAttached)
     }
 
     @Test

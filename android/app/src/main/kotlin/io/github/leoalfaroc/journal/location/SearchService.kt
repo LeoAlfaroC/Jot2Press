@@ -21,18 +21,30 @@ interface SearchService {
 }
 
 class AndroidSearchService(private val context: Context) : SearchService {
-    override fun start(): Boolean = try {
-        ContextCompat.startForegroundService(context, Intent(context, LocationService::class.java))
-        true
-    } catch (e: IllegalStateException) {
-        // Android 12 and later refuse it from the background, with ForegroundServiceStartNotAllowedException.
-        false
-    } catch (e: SecurityException) {
-        false
+    override fun start(): Boolean {
+        synchronized(LocationService.lock) { LocationService.wanted = true }
+        return try {
+            ContextCompat.startForegroundService(context, Intent(context, LocationService::class.java))
+            true
+        } catch (e: IllegalStateException) {
+            // Android 12 and later refuse it from the background, with ForegroundServiceStartNotAllowedException.
+            refused()
+        } catch (e: SecurityException) {
+            refused()
+        }
+    }
+
+    private fun refused(): Boolean {
+        synchronized(LocationService.lock) { LocationService.wanted = false }
+        return false
     }
 
     override fun stop() {
-        context.stopService(Intent(context, LocationService::class.java))
+        synchronized(LocationService.lock) {
+            LocationService.wanted = false
+            // A service not yet in the foreground is stopped by itself once it gets there.
+            if (LocationService.foreground) context.stopService(Intent(context, LocationService::class.java))
+        }
     }
 }
 
@@ -43,6 +55,15 @@ class LocationService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, searchNotification(this), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            val stillWanted = synchronized(lock) {
+                foreground = true
+                wanted
+            }
+            if (!stillWanted) {
+                // The search ended before this service reached the foreground, where Android needs it to be.
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         } catch (e: Exception) {
             // Android refused the foreground: no permission any more, or too late. The entry keeps what it has.
             stopSelf()
@@ -50,8 +71,26 @@ class LocationService : Service() {
         return START_NOT_STICKY
     }
 
-    private companion object {
-        const val NOTIFICATION_ID = 1
+    override fun onDestroy() {
+        synchronized(lock) { foreground = false }
+        super.onDestroy()
+    }
+
+    /**
+     * Whether the search wants the service, and whether it is in the foreground yet, read and written under one lock.
+     * Android crashes the app if a service started for the foreground is stopped before it gets there, so a stop
+     * that comes first is left to the service itself, and one that comes after it is made at once.
+     */
+    internal companion object {
+        private const val NOTIFICATION_ID = 1
+        val lock = Any()
+        var wanted = false
+        var foreground = false
+
+        fun reset() = synchronized(lock) {
+            wanted = false
+            foreground = false
+        }
     }
 }
 
