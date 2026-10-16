@@ -10,6 +10,7 @@ import io.github.leoalfaroc.journal.data.Settings
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.net.ApiResult
+import io.github.leoalfaroc.journal.net.Coordinates
 import io.github.leoalfaroc.journal.net.EntryPayload
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.settings.megabytes
@@ -208,7 +209,15 @@ class Sender(
         category = settings.categorySlug,
         postStatus = settings.postStatus.wire,
         photoIds = photos.map { it.id },
+        location = locationOf(entry),
     )
+
+    /** Only for an entry whose pin was on: a position kept with the pin off stays on the phone. */
+    private fun locationOf(entry: Entry): Coordinates? {
+        val lat = entry.lat ?: return null
+        val lng = entry.lng ?: return null
+        return if (entry.attachLocation) Coordinates(lat, lng) else null
+    }
 
     private fun describe(refused: ApiResult.Refused): String =
         if (refused.code == NO_ROUTE) PLUGIN_MISSING else refused.message

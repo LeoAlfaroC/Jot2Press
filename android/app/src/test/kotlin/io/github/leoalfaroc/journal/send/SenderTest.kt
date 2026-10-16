@@ -16,6 +16,7 @@ import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.isStuck
 import io.github.leoalfaroc.journal.data.memoryDb
+import io.github.leoalfaroc.journal.location.Fix
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
@@ -590,5 +591,45 @@ class SenderTest {
         assertTrue(queue.observe().first().isEmpty())
         assertEquals("journal", settings.get().categorySlug)
         assertEquals(CategoryNotice(missing = "Travel", used = "Journal"), settings.get().categoryNotice)
+    }
+
+    private fun bogota() = Fix(4.60971, -74.08175, 12f, clock.millis())
+
+    @Test
+    fun `an entry whose pin was on sends its location`() = runTest {
+        queue.saveDraft("Coffee")
+        queue.send(graceSeconds = 0, attachLocation = true, position = bogota())
+        clock.advance(Duration.ofMinutes(1))
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(Json.parseToJsonElement("""{"lat":4.60971,"lng":-74.08175}"""), sentBody().getValue("location"))
+    }
+
+    @Test
+    fun `an entry whose pin was on but that found no position sends none`() = runTest {
+        queue.saveDraft("Coffee")
+        queue.send(graceSeconds = 0, attachLocation = true)
+        clock.advance(Duration.ofMinutes(1))
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertFalse("location" in sentBody())
+    }
+
+    @Test
+    fun `a position kept with the pin turned off stays on the phone`() = runTest {
+        queue.saveDraft("Coffee")
+        val first = queue.send(graceSeconds = 60, attachLocation = true, position = bogota())!!
+        queue.takeBack(first.id)
+        queue.send(graceSeconds = 0, attachLocation = false)
+        clock.advance(Duration.ofMinutes(1))
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertFalse("location" in sentBody())
     }
 }

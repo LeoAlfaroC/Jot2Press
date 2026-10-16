@@ -246,4 +246,14 @@ class HttpJournalApiTest {
         val body = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
         assertEquals("[\"a\",\"b\"]", body.getValue("photo_ids").toString())
     }
+
+    @Test
+    fun `a location goes as numbers under lat and lng`() = runTest {
+        answer(201, """{"status":"created","post_id":7}""")
+
+        api().sendEntry(entry.copy(location = Coordinates(4.60971, -74.08175)))
+
+        val body = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
+        assertEquals(Json.parseToJsonElement("""{"lat":4.60971,"lng":-74.08175}"""), body.getValue("location"))
+    }
 }

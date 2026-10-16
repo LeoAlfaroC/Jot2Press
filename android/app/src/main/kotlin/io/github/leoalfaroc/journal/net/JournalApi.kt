@@ -48,9 +48,12 @@ sealed interface ApiResult<out T> {
     data class Unreachable(val reason: String) : ApiResult<Nothing>
 }
 
+/** Where an entry was written. */
+data class Coordinates(val lat: Double, val lng: Double)
+
 /**
  * One entry as the plugin's `POST /entries` takes it. `title` and `category` are left out when null.
- * `photoIds` are the photos uploaded ahead of the entry, in the order they show; `photo_ids` is left out when empty.
+ * `photoIds` are the photos uploaded ahead of the entry, in the order they show; `photo_ids` is left out when empty. `location` is left out when null.
  */
 data class EntryPayload(
     val id: String,
@@ -60,6 +63,7 @@ data class EntryPayload(
     val category: String?,
     val postStatus: String,
     val photoIds: List<String> = emptyList(),
+    val location: Coordinates? = null,
 )
 
 /** The plugin stored the entry, or had stored it before. */
@@ -106,6 +110,7 @@ class HttpJournalApi(private val client: OkHttpClient, private val credentials: 
             entry.category?.let { put("category", it) }
             put("post_status", entry.postStatus)
             if (entry.photoIds.isNotEmpty()) put("photo_ids", buildJsonArray { entry.photoIds.forEach { add(it) } })
+            entry.location?.let { put("location", buildJsonObject { put("lat", it.lat); put("lng", it.lng) }) }
         }.toString().toRequestBody(JSON)
         return call("entries", { post(body) }) { json ->
             val duplicate = when (json.text("status")) {
