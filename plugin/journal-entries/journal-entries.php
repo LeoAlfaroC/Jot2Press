@@ -370,7 +370,11 @@ function journal_entries_marker( string $id ): string {
 	return 'journal-entry-' . $id;
 }
 
-/** Builds the block markup for one entry: a paragraph with the time, place and text, then one image per photo. */
+/**
+ * Builds the block markup for one entry: a paragraph with the time, place and text, then its photos.
+ * The photos are square tiles three to a row, whatever their number, so that a lone photo is the size of any other
+ * in the day's post; a tap opens the whole photo in WordPress's own viewer. The markup is what the block editor saves.
+ */
 function journal_entries_render( string $id, DateTimeImmutable $written, string $text, ?array $location, array $attachment_ids ): string {
 	$line = '<strong>' . $written->format( 'H:i' ) . '</strong>';
 	if ( null !== $location ) {
@@ -386,14 +390,20 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
 	$marker = journal_entries_marker( $id );
 	$blocks = array( "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->" );
 
-	foreach ( $attachment_ids as $attachment_id ) {
-		$blocks[] = sprintf(
-			"<!-- wp:image {\"id\":%1\$d,\"sizeSlug\":\"large\",\"linkDestination\":\"none\"} -->\n" .
-			"<figure class=\"wp-block-image size-large\"><img src=\"%2\$s\" alt=\"\" class=\"wp-image-%1\$d\"/></figure>\n" .
-			'<!-- /wp:image -->',
-			$attachment_id,
-			esc_url( wp_get_attachment_image_url( $attachment_id, 'large' ) )
-		);
+	if ( $attachment_ids ) {
+		$images = array();
+		foreach ( $attachment_ids as $attachment_id ) {
+			$images[] = sprintf(
+				"<!-- wp:image {\"lightbox\":{\"enabled\":true},\"id\":%1\$d,\"aspectRatio\":\"1\",\"scale\":\"cover\",\"sizeSlug\":\"large\",\"linkDestination\":\"none\"} -->\n" .
+				"<figure class=\"wp-block-image size-large\"><img src=\"%2\$s\" alt=\"\" class=\"wp-image-%1\$d\" style=\"aspect-ratio:1;object-fit:cover\"/></figure>\n" .
+				'<!-- /wp:image -->',
+				$attachment_id,
+				esc_url( wp_get_attachment_image_url( $attachment_id, 'large' ) )
+			);
+		}
+		$blocks[] = "<!-- wp:group {\"layout\":{\"type\":\"grid\",\"columnCount\":3}} -->\n" .
+			'<div class="wp-block-group">' . implode( "\n\n", $images ) . "</div>\n" .
+			'<!-- /wp:group -->';
 	}
 
 	return implode( "\n\n", $blocks );

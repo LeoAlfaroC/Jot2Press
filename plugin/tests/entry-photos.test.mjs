@@ -11,12 +11,19 @@ const paragraph = ( id, time, text = '', where = '' ) =>
 const place = ( lat, lng ) =>
 	` · ${ lat }, ${ lng } (<a href="https://www.google.com/maps/search/?api=1&amp;query=${ lat }%2C${ lng }">Google Maps</a>)`;
 
+// As the block editor saves them: a square tile that opens the whole photo when tapped.
 const imageBlock = ( media ) =>
-	`<!-- wp:image {"id":${ media.id },"sizeSlug":"large","linkDestination":"none"} -->\n` +
-	`<figure class="wp-block-image size-large"><img src="${ media.source_url }" alt="" class="wp-image-${ media.id }"/></figure>\n` +
+	`<!-- wp:image {"lightbox":{"enabled":true},"id":${ media.id },"aspectRatio":"1","scale":"cover","sizeSlug":"large","linkDestination":"none"} -->\n` +
+	`<figure class="wp-block-image size-large"><img src="${ media.source_url }" alt="" class="wp-image-${ media.id }" style="aspect-ratio:1;object-fit:cover"/></figure>\n` +
 	`<!-- /wp:image -->`;
 
-test( 'an entry with three photos attaches them and shows them in the given order', async () => {
+// An entry's photos, three to a row whatever their number, so that every photo of the day is the same size.
+const photoGrid = ( ...media ) =>
+	`<!-- wp:group {"layout":{"type":"grid","columnCount":3}} -->\n` +
+	`<div class="wp-block-group">${ media.map( imageBlock ).join( '\n\n' ) }</div>\n` +
+	`<!-- /wp:group -->`;
+
+test( 'an entry with three photos attaches them and shows them in the given order, as square tiles three to a row', async () => {
 	const d = day();
 	const uploads = [
 		await uploadPhoto(),
@@ -44,7 +51,7 @@ test( 'an entry with three photos attaches them and shows them in the given orde
 	const post = await readPost( body.post_id );
 	assert.equal(
 		post.content.raw,
-		[ paragraph( id, '18:05', 'Walk on the pier.' ), ...media.map( imageBlock ) ].join( '\n\n' )
+		paragraph( id, '18:05', 'Walk on the pier.' ) + '\n\n' + photoGrid( ...media )
 	);
 } );
 
@@ -57,7 +64,7 @@ test( 'an entry with a photo and no text shows only the time above the image', a
 
 	const media = await readMedia( upload.body.attachment_id );
 	const post = await readPost( body.post_id );
-	assert.equal( post.content.raw, paragraph( id, '07:30' ) + '\n\n' + imageBlock( media ) );
+	assert.equal( post.content.raw, paragraph( id, '07:30' ) + '\n\n' + photoGrid( media ) );
 } );
 
 test( 'a located photo with no text shows the time and the place above the image', async () => {
@@ -76,7 +83,7 @@ test( 'a located photo with no text shows the time and the place above the image
 	const post = await readPost( body.post_id );
 	assert.equal(
 		post.content.raw,
-		paragraph( id, '07:45', '', place( '48.85837', '2.29448' ) ) + '\n\n' + imageBlock( media )
+		paragraph( id, '07:45', '', place( '48.85837', '2.29448' ) ) + '\n\n' + photoGrid( media )
 	);
 } );
 
@@ -92,7 +99,7 @@ test( 'a photo entry is appended below earlier entries of the day', async () => 
 	const post = await readPost( first.body.post_id );
 	assert.equal(
 		post.content.raw,
-		[ paragraph( id1, '09:00', 'Morning.' ), paragraph( id2, '10:00', 'Look.' ), imageBlock( media ) ].join( '\n\n' )
+		[ paragraph( id1, '09:00', 'Morning.' ), paragraph( id2, '10:00', 'Look.' ), photoGrid( media ) ].join( '\n\n' )
 	);
 } );
 
@@ -177,6 +184,11 @@ test( 'a public day post shows its photos to a visitor while the photos stay unl
 	assert.equal( post.status, 200 );
 	assert.ok( post.body.content.rendered.includes( media.source_url ) );
 	assert.equal( ( await fetch( media.source_url ) ).status, 200 );
+
+	// Three columns on every screen, and a tap opens the whole photo in WordPress's own viewer.
+	const shown = await ( await fetch( post.body.link ) ).text();
+	assert.match( shown, /grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/ );
+	assert.ok( shown.includes( 'data-wp-interactive="core/image"' ), 'the image opens in the lightbox' );
 
 	// The attachment itself stays out of the public API and has no page of its own.
 	assert.equal( ( await api( 'GET', `/wp/v2/media/${ id }`, { who: 'anonymous' } ) ).status, 401 );

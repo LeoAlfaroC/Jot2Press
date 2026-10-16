@@ -34,6 +34,8 @@ Each account that can publish keeps its own day posts: an entry is added to the 
 
 Each entry leaves a revision of the day's post, and WordPress keeps at most 30 for a day post (fewer if the site is set to keep fewer). They are where to look if an entry disappears because the post was open in an editor while the entry arrived: wp-admin → the post → Revisions.
 
+An entry's photos show below its line as square tiles, three to a row on every screen, so that a lone photo is the size of any other; a tap opens the whole photo in WordPress's own viewer. They are ordinary Group and Image blocks, editable in the block editor. Posts written before this layout keep their photos one under the other.
+
 A photo that an entry used at the very moment the photo was still being processed is embedded at full size, without its smaller sizes; `wp media regenerate <id>` makes them.
 
 If a photo's file disappears from the server (deleted by hand, or the uploads folder restored without it), an entry that uses that photo is refused until the app uploads the photo again; that upload replaces the broken one.
