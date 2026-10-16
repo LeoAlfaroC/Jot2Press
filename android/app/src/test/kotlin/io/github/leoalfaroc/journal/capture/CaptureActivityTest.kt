@@ -1,13 +1,21 @@
 package io.github.leoalfaroc.journal.capture
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.MediaStore
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.journal.TestWorld
 import io.github.leoalfaroc.journal.data.EntryState
@@ -18,18 +26,28 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
+import java.io.IOException
 
 /** The dialog as the widget opens it, on the real queue. */
 @RunWith(AndroidJUnit4::class)
 class CaptureActivityTest {
-    @get:Rule val folder = TemporaryFolder()
     @get:Rule val compose = createEmptyComposeRule()
-    private val world by lazy { TestWorld(folder.root) }
+    /** In the app's own files, which Robolectric empties for each test: the camera is only handed a folder there. */
+    private val world by lazy { TestWorld(ApplicationProvider.getApplicationContext<Context>().filesDir) }
+
+    /**
+     * FileProvider keeps the folders it may hand out for as long as the JVM lives, and Robolectric moves the app's
+     * files for every test: forget the last test's.
+     */
+    @Before
+    fun forgetSharedFolders() {
+        FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }.let { (it.get(null) as MutableMap<*, *>).clear() }
+    }
 
     @After
     fun close() = world.close()
@@ -140,6 +158,75 @@ class CaptureActivityTest {
             compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasText("Walked back along the seafront")).fetchSemanticsNodes().isNotEmpty() }
         }
         assertEquals("Walked back along the seafront", entries().single().text)
+    }
+
+    private val jpeg = byteArrayOf(-1, -40, -1, -32, 1, 2, 3, 4, 5, 6, 7, 8)
+
+    private fun draftPhotos() = runBlocking { world.queue.draft()?.let { world.queue.photosOf(it.id) }.orEmpty() }
+
+    @Test
+    fun `chosen photos are copied into the draft`() {
+        open().use { scenario ->
+            compose.onNodeWithContentDescription("Choose photos").performClick()
+            lateinit var picker: Intent
+            scenario.onActivity { picker = shadowOf(it).nextStartedActivityForResult.intent }
+            val uri = Uri.parse("content://media/picker/0/1")
+            shadowOf(ApplicationProvider.getApplicationContext<Context>().contentResolver).registerInputStreamSupplier(uri) { jpeg.inputStream() }
+
+            scenario.onActivity { shadowOf(it).receiveResult(picker, Activity.RESULT_OK, Intent().setData(uri)) }
+
+            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+            compose.onNodeWithContentDescription("Photo 1 of 1").assertExists()
+        }
+    }
+
+    @Test
+    fun `a photo taken with the camera joins the draft and is saved to the gallery`() {
+        open().use { scenario ->
+            compose.onNodeWithContentDescription("Take photo").performClick()
+            lateinit var camera: Intent
+            scenario.onActivity { camera = shadowOf(it).nextStartedActivityForResult.intent }
+            val target = camera.getParcelableExtra(MediaStore.EXTRA_OUTPUT, Uri::class.java)!!
+            world.photoFiles.file(target.lastPathSegment!!).writeBytes(jpeg)
+
+            scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
+
+            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+            compose.waitUntil(TIMEOUT) { world.galleryCopies == listOf(target.lastPathSegment) }
+        }
+    }
+
+    @Test
+    fun `when the gallery fails, the entry keeps its photo`() {
+        world.galleryFailure = IOException("No space")
+        open().use { scenario ->
+            compose.onNodeWithContentDescription("Take photo").performClick()
+            lateinit var camera: Intent
+            scenario.onActivity { camera = shadowOf(it).nextStartedActivityForResult.intent }
+            val target = camera.getParcelableExtra(MediaStore.EXTRA_OUTPUT, Uri::class.java)!!
+            world.photoFiles.file(target.lastPathSegment!!).writeBytes(jpeg)
+
+            scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
+
+            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+        }
+    }
+
+    @Test
+    fun `a photo taken while Android recreated the dialog still joins the draft`() {
+        open().use { scenario ->
+            compose.onNodeWithContentDescription("Take photo").performClick()
+            lateinit var camera: Intent
+            scenario.onActivity { camera = shadowOf(it).nextStartedActivityForResult.intent }
+            val target = camera.getParcelableExtra(MediaStore.EXTRA_OUTPUT, Uri::class.java)!!
+            world.photoFiles.file(target.lastPathSegment!!).writeBytes(jpeg)
+
+            scenario.recreate()
+            compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isNotEmpty() }
+            scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
+
+            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+        }
     }
 
     private companion object {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The only folder the camera app is handed: where it writes the photo it takes. -->
+<paths>
+    <files-path name="photos" path="photos/" />
+</paths>

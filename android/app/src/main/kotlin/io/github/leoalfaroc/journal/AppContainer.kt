@@ -11,6 +11,7 @@ import androidx.room.Room
 import androidx.work.WorkManager
 import io.github.leoalfaroc.journal.data.CredentialStore
 import io.github.leoalfaroc.journal.capture.Gallery
+import io.github.leoalfaroc.journal.capture.MediaStoreGallery
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.JournalDb
 import io.github.leoalfaroc.journal.data.KeystoreBox
@@ -100,6 +101,7 @@ fun realContainer(app: Application): AppContainer {
         settings = settings,
         credentials = credentials,
         photoFiles = photoFiles,
+        gallery = MediaStoreGallery(app.contentResolver, app.getString(R.string.app_name)),
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
         sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
         apiFor = apiFor,
