@@ -11,6 +11,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
@@ -92,6 +93,18 @@ class SettingsStoreTest {
         assertNull(kept.categorySlug)
         assertEquals(emptyList<Category>(), kept.categories)
         assertNull(kept.maxUploadBytes)
+    }
+
+    @Test
+    fun `saving credentials forgets the upload limit of the site before, and a tested connection stores its own`() = runTest {
+        settings.connectionSucceeded(site(journal, travel))
+        assertNotNull(settings.get().maxUploadBytes)
+
+        settings.credentialsSaved()
+        assertNull(settings.get().maxUploadBytes)
+
+        settings.connectionSucceeded(site(journal, travel))
+        assertNotNull(settings.get().maxUploadBytes)
     }
 
     @Test

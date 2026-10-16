@@ -89,6 +89,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun credentialsSaved() = change { p ->
         p[CONFIGURED] = true
         p[AUTH_ERROR] = false
+        // The limit is the site's: these credentials may be for another one. A tested connection stores its own next.
+        p.remove(MAX_UPLOAD)
     }
 
     /** `Test connection` of the saved credentials succeeded: keeps what the site reported and lets sending resume. */
