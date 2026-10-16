@@ -73,6 +73,8 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun setPostStatus(status: PostStatus) = change { it[POST_STATUS] = status.name }
     suspend fun setTitleLanguage(language: TitleLanguage) = change { it[TITLE_LANGUAGE] = language.name }
     suspend fun setTitlePattern(pattern: String) = change { it[TITLE_PATTERN] = pattern }
+    /** What the site reports as its upload limit, read again by the sender when it needs it. */
+    suspend fun setMaxUploadBytes(bytes: Long) = change { it[MAX_UPLOAD] = bytes }
     suspend fun setAuthError(on: Boolean) = change { it[AUTH_ERROR] = on }
 
     /** Choosing a category also answers the notice about a missing one. */

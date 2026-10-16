@@ -6,6 +6,7 @@ import io.github.leoalfaroc.journal.TitleLanguage
 import io.github.leoalfaroc.journal.data.Category
 import io.github.leoalfaroc.journal.data.CategoryNotice
 import io.github.leoalfaroc.journal.data.Credentials
+import io.github.leoalfaroc.journal.data.DraftPhoto
 import io.github.leoalfaroc.journal.data.Entry
 import io.github.leoalfaroc.journal.data.EntryState
 import io.github.leoalfaroc.journal.data.PhotoFiles
@@ -59,9 +60,12 @@ class SenderTest {
     private var saved: Credentials? = null
     /** Runs when a request is about to leave, after the sender has read the credentials for it. */
     private var whileSending: () -> Unit = {}
+    /** Replaced by a test that needs preparing a photo to fail. */
+    private var prepare: (java.io.File, Long) -> Prepared = { source, limit -> PhotoEncoder(folder.newFolder("cache-${++caches}")).prepare(source, limit) }
+    private var caches = 0
     private val sender by lazy {
         saved = signIn
-        Sender(queue, settings, credentials = { saved }, apiFor = ::api, deviceLocale = { Locale.FRENCH })
+        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit -> prepare(source, limit) }, deviceLocale = { Locale.FRENCH })
     }
 
     private fun api(signIn: Credentials): JournalApi {
@@ -96,6 +100,141 @@ class SenderTest {
     private fun sentBody(): JsonObject = Json.parseToJsonElement(server.takeRequest().body!!.utf8()).jsonObject
     private fun JsonObject.text(key: String) = getValue(key).jsonPrimitive.content
     private suspend fun stored(id: String): Entry? = queue.observe().first().firstOrNull { it.id == id }
+
+    private var photoIds = 0
+
+    /** An entry with photos, ready to send. Each copy starts like a JPEG, so it goes as it is under a large limit (the type is read from 12 bytes). */
+    private suspend fun pendingWithPhotos(text: String, count: Int): Pair<Entry, List<DraftPhoto>> {
+        val photos = List(count) {
+            val id = "photo-${++photoIds}"
+            files.newFile(id, "jpg").writeBytes(byteArrayOf(-1, -40, -1, -32) + ByteArray(8) + id.toByteArray())
+            DraftPhoto(id, "$id.jpg")
+        }
+        queue.saveDraft(text, photos)
+        val entry = queue.send(graceSeconds = 0)!!
+        clock.advance(Duration.ofMinutes(1))
+        return entry to photos
+    }
+
+    private fun photoStored() = answer(201, """{"status":"created","attachment_id":12}""")
+    private fun status(limit: Long) = answer(
+        200,
+        """{"user":"leo","category":{"slug":"journal","name":"Journal"},"categories":[],"max_upload_bytes":$limit,"version":"1.0.0"}""",
+    )
+
+    @Test
+    fun `photos go first, one per request and in order, then the entry lists them`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, photos) = pendingWithPhotos("Coffee", 2)
+        photoStored()
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        val first = server.takeRequest()
+        val second = server.takeRequest()
+        assertTrue(first.url.encodedPath.endsWith("/photos"))
+        assertTrue(first.body!!.utf8().contains(photos[0].id))
+        assertTrue(second.body!!.utf8().contains(photos[1].id))
+        val body = sentBody()
+        assertEquals(entry.id, body.text("id"))
+        assertEquals("[\"${photos[0].id}\",\"${photos[1].id}\"]", body.getValue("photo_ids").toString())
+        assertTrue(queue.observe().first().isEmpty())
+        assertFalse(files.file(photos[0].file).exists())
+    }
+
+    @Test
+    fun `a run that stops part-way goes on from the first photo not uploaded`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (_, photos) = pendingWithPhotos("Coffee", 2)
+        photoStored()
+        answer(503, """{"code":"journal_busy","message":"Busy.","data":{"status":503}}""")
+
+        assertEquals(Sender.Outcome.RETRY, sender.run())
+        photoStored()
+        created()
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(4, server.requestCount)
+        server.takeRequest()
+        server.takeRequest()
+        assertTrue(server.takeRequest().body!!.utf8().contains(photos[1].id))
+    }
+
+    @Test
+    fun `with no limit stored, the sender asks the site for it before the first photo`() = runTest {
+        pendingWithPhotos("Coffee", 1)
+        status(8_388_608)
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertTrue(server.takeRequest().url.encodedPath.endsWith("/status"))
+        assertEquals(8_388_608L, settings.get().maxUploadBytes)
+    }
+
+    @Test
+    fun `a photo the web server rejects as too large fails the entry, says which, and the limit is read again`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, _) = pendingWithPhotos("Coffee", 2)
+        answer(413, "<html>Request Entity Too Large</html>")
+        status(2_097_152)
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        val failed = stored(entry.id)!!
+        assertEquals(EntryState.FAILED, failed.state)
+        assertEquals(
+            "Photo 1 of 2 is larger than the site accepts. The web server's upload limit is lower than the 2 MB WordPress reports.",
+            failed.lastError,
+        )
+        assertEquals(2_097_152L, settings.get().maxUploadBytes)
+    }
+
+    @Test
+    fun `after unknown_photo, Retry uploads the photos again`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, photos) = pendingWithPhotos("Coffee", 1)
+        photoStored()
+        wordPressError(400, "unknown_photo", "Photo ${photos[0].id} has not been uploaded.")
+        assertEquals(Sender.Outcome.DONE, sender.run())
+        assertEquals(EntryState.FAILED, stored(entry.id)!!.state)
+
+        queue.retry(entry.id)
+        photoStored()
+        created()
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(4, server.requestCount)
+        assertTrue(queue.observe().first().isEmpty())
+    }
+
+    @Test
+    fun `a copy that cannot be read fails the entry without asking the site`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, photos) = pendingWithPhotos("Coffee", 2)
+        files.file(photos[1].file).delete()
+        photoStored()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals("Photo 2 could not be read on the phone.", stored(entry.id)!!.lastError)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test
+    fun `a phone that cannot write the photo to send keeps the entry waiting`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (entry, _) = pendingWithPhotos("Coffee", 1)
+        prepare = { _, _ -> throw java.io.IOException("No space left on device") }
+
+        assertEquals(Sender.Outcome.RETRY, sender.run())
+
+        assertEquals(EntryState.PENDING, stored(entry.id)!!.state)
+        assertEquals(0, server.requestCount)
+    }
 
     @Test
     fun `a confirmed entry leaves the phone`() = runTest {

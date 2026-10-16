@@ -3,6 +3,8 @@ package io.github.leoalfaroc.journal.send
 import io.github.leoalfaroc.journal.Titles
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.Entry
+import io.github.leoalfaroc.journal.data.Photo
+import io.github.leoalfaroc.journal.data.PhotoFiles
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.Settings
 import io.github.leoalfaroc.journal.data.SettingsStore
@@ -10,8 +12,13 @@ import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.net.ApiResult
 import io.github.leoalfaroc.journal.net.EntryPayload
 import io.github.leoalfaroc.journal.net.JournalApi
+import io.github.leoalfaroc.journal.settings.megabytes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.File
+import java.io.IOException
 import java.util.Locale
 
 /** What a refusal means for the queue. */
@@ -50,6 +57,9 @@ class Sender(
     /** The stored credentials, or null when there are none. */
     private val credentials: suspend () -> Credentials?,
     private val apiFor: (Credentials) -> JournalApi,
+    private val files: PhotoFiles,
+    /** Makes a photo's copy fit the limit: `PhotoEncoder.prepare`. */
+    private val prepare: (File, Long) -> Prepared,
     private val deviceLocale: () -> Locale = { Locale.getDefault() },
 ) {
     enum class Outcome {
@@ -76,6 +86,13 @@ class Sender(
 
     suspend fun run(): Outcome = oneAtATime.withLock { drain() }
 
+    /** What came of one request: go on with this entry, start over with the next one, or stop the run. */
+    private sealed interface Step {
+        data object Go : Step
+        data object Again : Step
+        data class Stop(val outcome: Outcome) : Step
+    }
+
     private suspend fun drain(): Outcome {
         while (true) {
             // Read again for every entry: `Save` may have stored other credentials since the last one.
@@ -83,42 +100,107 @@ class Sender(
             val signIn = credentials() ?: return unreadable()
             queue.promoteDue()
             val entry = queue.nextPending() ?: return Outcome.DONE
-            when (val result = apiFor(signIn).sendEntry(payload(entry, settings.get()))) {
-                is ApiResult.Ok -> {
-                    // The fallback is recorded first: if the process dies between the two, the resend finds the entry
-                    // still pending and the plugin answers it again.
-                    result.value.categoryFallback?.let { settings.categoryFellBack(it) }
-                    queue.markSent(entry.id)
-                }
-                // No answer says nothing about the site, so nothing is recorded.
-                is ApiResult.Unreachable -> return Outcome.RETRY
-                is ApiResult.Refused -> when (verdict(result)) {
-                    Verdict.AUTH -> {
-                        // Credentials replaced while the request was on its way are not the ones that were rejected:
-                        // the entry is tried again with them.
-                        if (credentials() != signIn) continue
-                        queue.clearServerError(entry.id)
-                        settings.setAuthError(true)
-                        return Outcome.HELD
-                    }
-                    Verdict.REJECTED -> queue.markFailed(entry.id, result.message)
-                    Verdict.SERVER_FAULT -> {
-                        queue.recordServerError(entry.id, describe(result))
-                        return Outcome.RETRY
-                    }
-                }
-            }
+            val api = apiFor(signIn)
+            val photos = queue.photosOf(entry.id)
+            var step = sendPhotos(api, signIn, entry, photos)
+            if (step == Step.Go) step = sendEntry(api, signIn, entry, photos)
+            if (step is Step.Stop) return step.outcome
         }
     }
 
+    /** Uploads the photos the site does not have yet, in order. Each one counts as a request of the entry. */
+    private suspend fun sendPhotos(api: JournalApi, signIn: Credentials, entry: Entry, photos: List<Photo>): Step {
+        val waiting = photos.filterNot { it.uploaded }
+        if (waiting.isEmpty()) return Step.Go
+        val limit = settings.get().maxUploadBytes ?: when (val status = api.status()) {
+            is ApiResult.Ok -> status.value.maxUploadBytes.also { settings.setMaxUploadBytes(it) }
+            is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
+            is ApiResult.Refused -> return refused(status, signIn, entry)
+        }
+        for (photo in waiting) {
+            val number = photos.indexOf(photo) + 1
+            val ready = try {
+                withContext(Dispatchers.IO) { prepare(files.file(photo.file), limit) }
+            } catch (e: UnreadablePhoto) {
+                queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
+                return Step.Again
+            } catch (e: IOException) {
+                // The phone could not write what it would send (no space): not the photo's fault.
+                return Step.Stop(Outcome.RETRY)
+            }
+            val result = try {
+                api.uploadPhoto(photo.id, ready.file, ready.mediaType)
+            } finally {
+                if (ready.temporary) ready.file.delete()
+            }
+            when (result) {
+                is ApiResult.Ok -> queue.markUploaded(photo.id)
+                is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
+                is ApiResult.Refused -> {
+                    if (result.status != 413) return refused(result, signIn, entry)
+                    // WordPress reported a limit the web server in front of it does not allow.
+                    (api.status() as? ApiResult.Ok)?.let { settings.setMaxUploadBytes(it.value.maxUploadBytes) }
+                    val reported = settings.get().maxUploadBytes ?: limit
+                    return refused(
+                        result,
+                        signIn,
+                        entry,
+                        "Photo $number of ${photos.size} is larger than the site accepts. " +
+                            "The web server's upload limit is lower than the ${megabytes(reported)} WordPress reports.",
+                    )
+                }
+            }
+        }
+        return Step.Go
+    }
+
+    private suspend fun sendEntry(api: JournalApi, signIn: Credentials, entry: Entry, photos: List<Photo>): Step =
+        when (val result = api.sendEntry(payload(entry, settings.get(), photos))) {
+            is ApiResult.Ok -> {
+                // The fallback is recorded first: if the process dies between the two, the resend finds the entry
+                // still pending and the plugin answers it again.
+                result.value.categoryFallback?.let { settings.categoryFellBack(it) }
+                queue.markSent(entry.id)
+                Step.Again
+            }
+            // No answer says nothing about the site, so nothing is recorded.
+            is ApiResult.Unreachable -> Step.Stop(Outcome.RETRY)
+            is ApiResult.Refused -> refused(result, signIn, entry)
+        }
+
+    /** What a refusal of any request of [entry] does to the queue. [message] replaces the site's own, when given. */
+    private suspend fun refused(result: ApiResult.Refused, signIn: Credentials, entry: Entry, message: String = result.message): Step =
+        when (verdict(result)) {
+            Verdict.AUTH -> {
+                // Credentials replaced while the request was on its way are not the ones that were rejected:
+                // the entry is tried again with them.
+                if (credentials() != signIn) {
+                    Step.Again
+                } else {
+                    queue.clearServerError(entry.id)
+                    settings.setAuthError(true)
+                    Step.Stop(Outcome.HELD)
+                }
+            }
+            Verdict.REJECTED -> {
+                queue.markFailed(entry.id, message, result.code)
+                Step.Again
+            }
+            Verdict.SERVER_FAULT -> {
+                queue.recordServerError(entry.id, describe(result))
+                Step.Stop(Outcome.RETRY)
+            }
+        }
+
     /** The title, the category and the status are the ones set when the entry is sent, not when it was written. */
-    private fun payload(entry: Entry, settings: Settings) = EntryPayload(
+    private fun payload(entry: Entry, settings: Settings, photos: List<Photo>) = EntryPayload(
         id = entry.id,
         writtenAt = checkNotNull(entry.writtenAt) { "A pending entry has been sent, so it has its time." },
         text = entry.text,
         title = entry.day?.let { Titles.build(settings.titlePattern, settings.titleLanguage, it, deviceLocale()) },
         category = settings.categorySlug,
         postStatus = settings.postStatus.wire,
+        photoIds = photos.map { it.id },
     )
 
     private fun describe(refused: ApiResult.Refused): String =

@@ -20,6 +20,7 @@ import io.github.leoalfaroc.journal.data.memoryDb
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
+import io.github.leoalfaroc.journal.send.PhotoEncoder
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,7 @@ class TestWorld(folder: File) {
     val scheduler: Scheduler
     /** Every site address leads to the simulated site, which has no https. */
     val apiFor: (Credentials) -> JournalApi = { HttpJournalApi(journalHttpClient(), it.copy(siteUrl = server.url("/").toString())) }
-    val sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, deviceLocale = { Locale.ENGLISH })
+    val sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(File(folder, "cache"))::prepare, deviceLocale = { Locale.ENGLISH })
     var widgetRefreshes = 0
     /** When set, the widget redraw throws it. */
     var widgetFailure: Exception? = null

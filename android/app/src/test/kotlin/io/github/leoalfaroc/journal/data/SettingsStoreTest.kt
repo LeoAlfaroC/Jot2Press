@@ -32,6 +32,12 @@ class SettingsStoreTest {
     fun close() = scope.cancel()
 
     @Test
+    fun `the upload limit can be stored on its own`() = runTest {
+        settings.setMaxUploadBytes(2_097_152)
+        assertEquals(2_097_152L, settings.get().maxUploadBytes)
+    }
+
+    @Test
     fun `a new install starts with the defaults`() = runTest {
         assertEquals(
             Settings(

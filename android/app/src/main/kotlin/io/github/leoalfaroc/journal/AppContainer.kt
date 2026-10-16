@@ -20,6 +20,7 @@ import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
+import io.github.leoalfaroc.journal.send.PhotoEncoder
 import io.github.leoalfaroc.journal.send.Scheduler
 import io.github.leoalfaroc.journal.send.Sender
 import io.github.leoalfaroc.journal.widget.JournalWidget
@@ -100,7 +101,7 @@ fun realContainer(app: Application): AppContainer {
         credentials = credentials,
         photoFiles = photoFiles,
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
-        sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor),
+        sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
         apiFor = apiFor,
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
         onUnmeteredNetwork = { connectivity.activeNetwork != null && !connectivity.isActiveNetworkMetered },
