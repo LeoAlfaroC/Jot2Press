@@ -4,7 +4,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -48,6 +51,7 @@ class CaptureSheetTest {
         takePhoto = { calls += "takePhoto" },
         choosePhotos = { calls += "choosePhotos" },
         removePhoto = { calls += "removePhoto:$it" },
+        togglePin = { calls += "togglePin" },
     )
     private val blank = CaptureUi(ready = true, day = LocalDate.of(2026, 10, 11))
     private val coffee = LastEntry(id = "id-1", time = "14:32", excerpt = "Coffee with Ana")
@@ -260,5 +264,45 @@ class CaptureSheetTest {
         }
 
         assertEquals(listOf("removePhoto:photo-4"), calls)
+    }
+
+    @Test
+    fun `without Attach location there is no pin`() {
+        show(blank)
+
+        compose.onNodeWithContentDescription("Attach location").assertDoesNotExist()
+    }
+
+    @Test
+    fun `on, the pin is a switch that is on, after the photo buttons and before Send, and a tap goes to the model`() {
+        show(blank.copy(text = "Coffee", showPin = true, pinOn = true))
+
+        val pin = compose.onNodeWithContentDescription("Attach location").assertIsOn().assertHasClickAction()
+        val photos = compose.onNodeWithContentDescription("Choose photos").getUnclippedBoundsInRoot()
+        val send = compose.onNodeWithText("Send").getUnclippedBoundsInRoot()
+        val bounds = pin.getUnclippedBoundsInRoot()
+        assertTrue(photos.right <= bounds.left && bounds.right <= send.left)
+        assertEquals(48.dp, bounds.right - bounds.left)
+        assertEquals(48.dp, bounds.bottom - bounds.top)
+
+        pin.performClick()
+        assertEquals(listOf("togglePin"), calls)
+    }
+
+    @Test
+    fun `off, the pin is still there as a switch that is off`() {
+        show(blank.copy(showPin = true, pinOn = false))
+
+        compose.onNodeWithContentDescription("Attach location").assertIsOff()
+    }
+
+    @Test
+    fun `at 10 photos the camera and photos buttons stop, and the pin keeps working`() {
+        show(blank.copy(photos = List(10) { DraftPhoto("p$it", "p$it.jpg") }, showPin = true, pinOn = false))
+
+        compose.onNodeWithContentDescription("Take photo").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Choose photos").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Attach location").assertIsEnabled().performClick()
+        assertEquals(listOf("togglePin"), calls)
     }
 }

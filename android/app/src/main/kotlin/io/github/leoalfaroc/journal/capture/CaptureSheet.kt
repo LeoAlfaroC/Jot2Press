@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -109,6 +110,8 @@ class CaptureActions(
     /** Opens the system photo picker for what is left of the 10. */
     val choosePhotos: () -> Unit = {},
     val removePhoto: (String) -> Unit = {},
+    /** Turns the pin on or off. */
+    val togglePin: () -> Unit = {},
 )
 
 const val SIGN_IN_NOTICE = "The site rejected the sign-in. Entries wait on the phone."
@@ -190,6 +193,7 @@ fun CaptureSheet(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             PhotoButton(R.drawable.ic_camera, "Take photo", ui.canAddPhotos, actions.takePhoto)
             PhotoButton(R.drawable.ic_photos, "Choose photos", ui.canAddPhotos, actions.choosePhotos)
+            if (ui.showPin) PinButton(ui.pinOn, actions.togglePin)
             SendButton(enabled = ui.canSend, onClick = actions.send, modifier = Modifier.padding(start = 8.dp).weight(1f))
         }
     }
@@ -371,6 +375,29 @@ private fun PhotoButton(@DrawableRes icon: Int, label: String, enabled: Boolean,
         contentAlignment = Alignment.Center,
     ) {
         Image(painterResource(icon), contentDescription = null, colorFilter = ColorFilter.tint(if (enabled) colors.app else colors.quiet))
+    }
+}
+
+/**
+ * Whether this entry sends where it was written. Its states differ in shape, not in colour:
+ * grey is for a control that cannot be used, and the pin always can.
+ */
+@Composable
+private fun PinButton(on: Boolean, toggle: () -> Unit) {
+    val colors = LocalJournalColors.current
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(Corner)
+            .toggleable(value = on, role = Role.Switch, onValueChange = { toggle() })
+            .semantics { contentDescription = "Attach location" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Image(
+            painterResource(if (on) R.drawable.ic_location_on else R.drawable.ic_location_off),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(colors.app),
+        )
     }
 }
 

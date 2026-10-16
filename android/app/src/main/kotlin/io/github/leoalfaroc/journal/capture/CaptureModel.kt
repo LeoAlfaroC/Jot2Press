@@ -52,6 +52,10 @@ data class CaptureUi(
     val closed: Boolean = false,
     /** What the notice on top asks the user to fix, or null for no notice. */
     val trouble: Trouble? = null,
+    /** `Attach location` shows on in settings: the pin is in the bottom row. */
+    val showPin: Boolean = false,
+    /** The pin: the entry sends where it was written. */
+    val pinOn: Boolean = false,
 ) {
     val hasContent: Boolean get() = text.isNotBlank() || photos.isNotEmpty()
     val canSend: Boolean get() = hasContent && !confirmingDiscard
