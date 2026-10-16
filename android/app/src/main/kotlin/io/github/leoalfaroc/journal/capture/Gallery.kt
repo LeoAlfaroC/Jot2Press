@@ -31,7 +31,9 @@ class MediaStoreGallery(private val resolver: ContentResolver, album: String) : 
         try {
             val out = resolver.openOutputStream(uri) ?: throw IOException("The gallery did not take the photo.")
             out.use { target -> photo.inputStream().use { it.copyTo(target) } }
-            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+            // A row left pending is purged by MediaStore after about a week: the copy would silently vanish.
+            val published = resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+            if (published == 0) throw IOException("The gallery did not keep the photo.")
         } catch (e: Exception) {
             resolver.delete(uri, null, null)
             throw e

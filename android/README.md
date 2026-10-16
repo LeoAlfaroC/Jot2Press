@@ -37,9 +37,9 @@ Until credentials are saved, the widget's write button opens settings. Once save
 
 - The write button on the widget opens the capture dialog. `Send` stores the entry and closes the dialog.
 - The camera and photos buttons beside `Send` add up to 10 photos to an entry: the system photo picker for several at once, the phone's camera app for one. An entry can be photos alone. A photo taken with the camera is also saved to the gallery, in an album with the app's name; that copy is yours and stays.
-- Photos are sent as they are when they fit the site's upload limit. A larger one is re-encoded as JPEG until it fits.
+- JPEG, PNG and WebP photos are sent as they are when they fit the site's upload limit. Other types (HEIC, for example) and larger ones are re-encoded as JPEG until they fit.
 - An entry waits for the grace window, 60 seconds unless changed, before it is sent. During that time the dialog shows it at the top, with `Edit` and `Delete`.
-- Closing the dialog with text in it keeps the text as a draft.
+- Closing the dialog with text or photos in it keeps them as a draft.
 - The widget is one square. A red badge appears on its corner only when something needs fixing: a number for entries that could not be sent, `!` when the site rejected the sign-in. Tapping the badge opens the queue, where those entries are retried or deleted, or settings for the sign-in. Entries waiting to be sent and a kept draft show nothing.
 - While something needs fixing, the capture dialog says what on its first line, with `Review` (the queue) or `Fix` (settings). Writing still works: what is sent waits on the phone.
 - A widget added when it was two squares wide keeps that size after an update: remove it and add it again.

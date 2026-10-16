@@ -23,7 +23,8 @@ open class JournalApp : Application() {
         // Copies left behind by a process that died between deleting a photo's row and its file.
         val started = System.currentTimeMillis()
         container.scope.launch(Dispatchers.IO) {
-            container.photoFiles.sweep(container.queue.photoFileNames(), before = started - SWEEP_MARGIN_MILLIS)
+            // Best effort: a failure here must not take the app down.
+            runCatching { container.photoFiles.sweep(container.queue.photoFileNames(), before = started - SWEEP_MARGIN_MILLIS) }
         }
     }
 

@@ -47,7 +47,7 @@ class Queue(
      * The copies of photos the editor no longer holds are deleted.
      */
     suspend fun saveDraft(text: String, photos: List<DraftPhoto> = emptyList(), afresh: Boolean = false) {
-        val held = photos.take(MAX_PHOTOS)
+        val held = photos.take(MAX_PHOTOS).distinctBy { it.id }
         val dropped = db.withTransaction {
             val draft = dao.draft()
             val before = draft?.let { photoDao.of(it.id) }.orEmpty()
