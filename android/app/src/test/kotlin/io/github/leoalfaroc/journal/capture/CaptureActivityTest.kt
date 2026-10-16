@@ -208,7 +208,9 @@ class CaptureActivityTest {
 
             scenario.onActivity { shadowOf(it).receiveResult(camera, Activity.RESULT_OK, Intent()) }
 
-            compose.waitUntil(TIMEOUT) { draftPhotos().size == 1 }
+            compose.waitUntil(TIMEOUT) { world.galleryAttempts == listOf(target.lastPathSegment) }
+            assertEquals(listOf(target.lastPathSegment), draftPhotos().map { it.file })
+            assertTrue(world.photoFiles.file(target.lastPathSegment!!).exists())
         }
     }
 

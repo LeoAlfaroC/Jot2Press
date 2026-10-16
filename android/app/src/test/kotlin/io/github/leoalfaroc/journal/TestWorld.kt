@@ -32,6 +32,7 @@ import mockwebserver3.MockWebServer
 import java.io.File
 import java.time.Duration
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * The whole app wired for a test: an empty queue, default settings, a clock moved by hand, a simulated site,
@@ -62,8 +63,10 @@ class TestWorld(folder: File) {
     /** When set, the widget redraw throws it. */
     var widgetFailure: Exception? = null
     var unmetered = true
-    /** The names of the photos the gallery was asked to save. */
-    val galleryCopies = mutableListOf<String>()
+    /** The names of the photos the gallery was asked to save, including those it failed on. Written off the main thread. */
+    val galleryAttempts: MutableList<String> = CopyOnWriteArrayList()
+    /** The names of the photos the gallery saved. Written off the main thread. */
+    val galleryCopies: MutableList<String> = CopyOnWriteArrayList()
     /** When set, saving to the gallery throws it. */
     var galleryFailure: Exception? = null
     val container: AppContainer
@@ -82,7 +85,11 @@ class TestWorld(folder: File) {
             settings = settings,
             credentials = credentials,
             photoFiles = photoFiles,
-            gallery = { photo -> galleryFailure?.let { throw it }; galleryCopies += photo.name },
+            gallery = { photo ->
+                galleryAttempts += photo.name
+                galleryFailure?.let { throw it }
+                galleryCopies += photo.name
+            },
             scheduler = scheduler,
             sender = sender,
             apiFor = apiFor,
