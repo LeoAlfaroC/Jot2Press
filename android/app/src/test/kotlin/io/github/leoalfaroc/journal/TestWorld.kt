@@ -19,6 +19,7 @@ import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.memoryDb
 import io.github.leoalfaroc.journal.location.FakeLocationSource
 import io.github.leoalfaroc.journal.location.FakeSearchService
+import io.github.leoalfaroc.journal.location.Fix
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
@@ -29,6 +30,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import mockwebserver3.MockWebServer
 import java.io.File
@@ -54,6 +56,8 @@ class TestWorld(folder: File) {
     val photoFiles = PhotoFiles(File(folder, "photos"))
     val location = FakeLocationSource()
     val search = FakeSearchService()
+    /** The search's ticks come only when a test sends one. */
+    val ticks = MutableSharedFlow<Unit>()
     val queue = Queue(db, clock, photoFiles) { "id-${++ids}" }
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, box)
@@ -105,6 +109,7 @@ class TestWorld(folder: File) {
                 widgetRefreshes++
                 widgetFailure?.let { throw it }
             },
+            locationTicks = ticks,
         )
         (context as JournalApp).container = container
     }
@@ -123,6 +128,25 @@ class TestWorld(folder: File) {
         val entry = queue.send(graceSeconds)!!
         clock.advance(Duration.ofMinutes(1))
         return entry
+    }
+
+    /** A position taken now, in Bogotá unless said otherwise. */
+    fun fix(accuracy: Float, lat: Double = 4.60971, lng: Double = -74.08175, ageMillis: Long = 0) =
+        Fix(lat, lng, accuracy, clock.millis() - ageMillis)
+
+    /** Hands a position to whatever listens, and waits until the app has handled it. */
+    suspend fun position(fix: Fix) = handled { location.emit(fix) }
+
+    /** One tick of the search, handled. */
+    suspend fun tick() = handled {
+        ticks.subscriptionCount.first { it > 0 }
+        ticks.emit(Unit)
+    }
+
+    private suspend fun handled(send: suspend () -> Unit) {
+        val before = container.locator.handled.value
+        send()
+        container.locator.handled.first { it > before }
     }
 
     suspend fun entries(): List<Entry> = queue.observe().first()

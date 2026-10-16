@@ -21,6 +21,8 @@ import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.location.AndroidLocationSource
 import io.github.leoalfaroc.journal.location.AndroidSearchService
 import io.github.leoalfaroc.journal.location.LocationSource
+import io.github.leoalfaroc.journal.location.Locator
+import io.github.leoalfaroc.journal.location.everySecond
 import io.github.leoalfaroc.journal.location.SearchService
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
@@ -33,6 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import java.io.File
 import java.time.Clock
 import java.time.Instant
@@ -61,6 +64,8 @@ class AppContainer(
     /** Whether the phone is on a network that `Upload on Wi-Fi only` allows. */
     val onUnmeteredNetwork: () -> Boolean = { true },
     val refreshWidget: suspend () -> Unit = {},
+    /** Wakes the search for a position when none comes. */
+    locationTicks: Flow<Unit> = everySecond(),
 ) {
     /**
      * What the capture dialog does to the queue, for every opening of it: a dialog that is closing
@@ -70,6 +75,9 @@ class AppContainer(
 
     /** What the settings screen stores: two quick edits of a field are stored in the order they were typed. */
     val settingsWork = InOrder(scope)
+
+    /** The position for the dialog, and the search that goes on after `Send`. */
+    val locator = Locator(location, queue, searchService, clock, scope, locationTicks)
 
     /** Redraws the widget. A failed redraw only leaves it as it was: it must not end the caller. */
     suspend fun redrawWidget() {
