@@ -58,6 +58,18 @@ class SettingsActivityTest {
     }
 
     @Test
+    fun `opened for the queue, it starts on the queue, and back returns to settings`() {
+        world
+        ActivityScenario.launch<SettingsActivity>(SettingsActivity.queueIntent(world.context)).use { scenario ->
+            appears(EMPTY_MESSAGE)
+            compose.onNodeWithText("Test connection").assertDoesNotExist()
+
+            scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+            appears("Test connection")
+        }
+    }
+
+    @Test
     fun `two quick edits of the grace window are stored in the order they were typed`() {
         val actions = SettingsViewModel(world.container).actions(openQueue = {})
 

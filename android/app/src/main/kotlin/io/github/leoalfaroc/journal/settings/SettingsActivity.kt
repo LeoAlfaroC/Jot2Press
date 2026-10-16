@@ -1,5 +1,7 @@
 package io.github.leoalfaroc.journal.settings
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -86,16 +88,23 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
     }
 }
 
-/** Opened from the launcher icon and from the widget's status area. The queue screen is one step in; back returns here. */
+/** Opened from the launcher icon, the widget and the capture dialog's notice. The queue screen is one step in; back returns here. */
 class SettingsActivity : ComponentActivity() {
     private val viewModel: SettingsViewModel by viewModels { SettingsViewModel.Factory }
+
+    companion object {
+        /** Starts on the queue screen, where entries that could not be sent are retried or deleted. */
+        const val OPEN_QUEUE = "io.github.leoalfaroc.journal.OPEN_QUEUE"
+
+        fun queueIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java).putExtra(OPEN_QUEUE, true)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
             JournalTheme {
-                var onQueue by rememberSaveable { mutableStateOf(false) }
+                var onQueue by rememberSaveable { mutableStateOf(intent.getBooleanExtra(OPEN_QUEUE, false)) }
                 if (onQueue) {
                     BackHandler { onQueue = false }
                     val ui by viewModel.queue.collectAsStateWithLifecycle()

@@ -57,9 +57,12 @@ fun badgeText(state: WidgetState): String? = when {
     else -> null
 }
 
-/** What a screen reader says for the badge. */
-fun badgeDescription(state: WidgetState): String =
-    if (state.signInRejected) "The site rejected the sign-in. Open settings" else "${state.failed} failed to send. Open settings"
+/** What a screen reader says for the badge, and where touching it leads. */
+fun badgeDescription(state: WidgetState): String = when {
+    state.signInRejected -> "The site rejected the sign-in. Opens settings"
+    state.failed == 1 -> "1 entry could not be sent. Opens the queue"
+    else -> "${state.failed} entries could not be sent. Opens the queue"
+}
 
 /**
  * One square: the write button, with a badge over its corner that opens settings when something needs fixing.
@@ -67,7 +70,13 @@ fun badgeDescription(state: WidgetState): String =
  */
 fun widgetViews(context: Context, state: WidgetState): RemoteViews = RemoteViews(context.packageName, R.layout.widget_square).apply {
     // Until credentials are saved there is nowhere to send an entry to.
-    setOnClickPendingIntent(R.id.write, open(context, if (state.configured) CaptureActivity::class.java else SettingsActivity::class.java))
+    if (state.configured) {
+        setOnClickPendingIntent(R.id.write, open(context, WRITE, Intent(context, CaptureActivity::class.java)))
+        setContentDescription(R.id.write, "Write a journal entry")
+    } else {
+        setOnClickPendingIntent(R.id.write, open(context, WRITE, Intent(context, SettingsActivity::class.java)))
+        setContentDescription(R.id.write, "Set up the journal. Opens settings")
+    }
     val badge = badgeText(state)
     if (badge == null) {
         setViewVisibility(R.id.badge, View.GONE)
@@ -75,9 +84,15 @@ fun widgetViews(context: Context, state: WidgetState): RemoteViews = RemoteViews
         setViewVisibility(R.id.badge, View.VISIBLE)
         setTextViewText(R.id.badge, badge)
         setContentDescription(R.id.badge, badgeDescription(state))
-        setOnClickPendingIntent(R.id.badge, open(context, SettingsActivity::class.java))
+        // A rejected sign-in is fixed in settings; entries that could not be sent, in the queue.
+        val fix = if (state.signInRejected) Intent(context, SettingsActivity::class.java) else SettingsActivity.queueIntent(context)
+        setOnClickPendingIntent(R.id.badge, open(context, BADGE, fix))
     }
 }
 
-private fun open(context: Context, activity: Class<*>): PendingIntent =
-    PendingIntent.getActivity(context, 0, Intent(context, activity), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+/** Request codes, one per thing to touch: Android tells pending intents to the same activity apart by them, not by their extras. */
+private const val WRITE = 0
+private const val BADGE = 1
+
+private fun open(context: Context, requestCode: Int, intent: Intent): PendingIntent =
+    PendingIntent.getActivity(context, requestCode, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

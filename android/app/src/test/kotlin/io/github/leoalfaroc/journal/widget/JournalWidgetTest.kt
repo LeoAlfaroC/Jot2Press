@@ -2,6 +2,7 @@ package io.github.leoalfaroc.journal.widget
 
 import android.app.Application
 import android.content.ComponentName
+import android.content.Intent
 import android.graphics.Rect
 import android.view.View
 import android.widget.FrameLayout
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -51,10 +53,15 @@ class JournalWidgetTest {
     private fun View.write() = findViewById<View>(R.id.write)
     private fun View.badge() = findViewById<TextView>(R.id.badge)
 
-    private fun View.opens(): Class<*>? {
+    /** What a tap starts. */
+    private fun View.tap(): Intent {
         performClick()
-        return shadowOf(world.context as Application).nextStartedActivity?.component?.className?.let { Class.forName(it) }
+        return shadowOf(world.context as Application).nextStartedActivity
     }
+
+    private fun View.opens(): Class<*> = Class.forName(tap().component!!.className)
+
+    private fun View.opensTheQueue() = tap().let { it.component?.className == SettingsActivity::class.java.name && it.getBooleanExtra(SettingsActivity.OPEN_QUEUE, false) }
 
     @Test
     fun `in a cell taller than wide the write button is a square as wide as the cell allows`() {
@@ -75,26 +82,28 @@ class JournalWidgetTest {
         val widget = shown(WidgetState(configured = true))
 
         assertEquals(View.GONE, widget.badge().visibility)
-        assertEquals("Write", widget.write().contentDescription)
+        assertEquals("Write a journal entry", widget.write().contentDescription)
         assertEquals(CaptureActivity::class.java, widget.write().opens())
     }
 
     @Test
-    fun `until the app is configured the write button opens settings`() {
-        assertEquals(SettingsActivity::class.java, shown(WidgetState(configured = false)).write().opens())
+    fun `until the app is configured the write button opens settings, and says so`() {
+        val write = shown(WidgetState(configured = false)).write()
+        assertEquals("Set up the journal. Opens settings", write.contentDescription)
+        assertEquals(SettingsActivity::class.java, write.opens())
     }
 
     @Test
-    fun `entries that failed show as a badge over the button's corner that opens settings`() {
+    fun `entries that could not be sent show as a badge over the button's corner that opens the queue`() {
         val widget = shown(WidgetState(failed = 2, configured = true))
         val badge = widget.badge()
         val write = widget.write().bounds()
 
         assertEquals(View.VISIBLE, badge.visibility)
         assertEquals("2", badge.text)
-        assertEquals("2 failed to send. Open settings", badge.contentDescription)
+        assertEquals("2 entries could not be sent. Opens the queue", badge.contentDescription)
         assertTrue(badge.bounds().contains(write.right - 1, write.top))
-        assertEquals(SettingsActivity::class.java, badge.opens())
+        assertTrue(badge.opensTheQueue())
         assertEquals(CaptureActivity::class.java, widget.write().opens())
     }
 
@@ -103,7 +112,8 @@ class JournalWidgetTest {
         val badge = shown(WidgetState(failed = 120, configured = true)).badge()
 
         assertEquals("99+", badge.text)
-        assertEquals("120 failed to send. Open settings", badge.contentDescription)
+        assertEquals("120 entries could not be sent. Opens the queue", badge.contentDescription)
+        assertEquals("1 entry could not be sent. Opens the queue", shown(WidgetState(failed = 1, configured = true)).badge().contentDescription)
     }
 
     @Test
@@ -111,8 +121,10 @@ class JournalWidgetTest {
         val badge = shown(WidgetState(failed = 2, signInRejected = true, configured = true)).badge()
 
         assertEquals("!", badge.text)
-        assertEquals("The site rejected the sign-in. Open settings", badge.contentDescription)
-        assertEquals(SettingsActivity::class.java, badge.opens())
+        assertEquals("The site rejected the sign-in. Opens settings", badge.contentDescription)
+        val opened = badge.tap()
+        assertEquals(SettingsActivity::class.java.name, opened.component?.className)
+        assertFalse(opened.getBooleanExtra(SettingsActivity.OPEN_QUEUE, false))
     }
 
     @Test
