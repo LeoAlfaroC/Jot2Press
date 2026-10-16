@@ -8,6 +8,7 @@ import io.github.leoalfaroc.journal.data.CategoryNotice
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.Entry
 import io.github.leoalfaroc.journal.data.EntryState
+import io.github.leoalfaroc.journal.data.PhotoFiles
 import io.github.leoalfaroc.journal.data.PostStatus
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
@@ -51,7 +52,8 @@ class SenderTest {
     private val db = memoryDb()
     private val storeScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var ids = 0
-    private val queue = Queue(db, clock) { "id-${++ids}" }
+    private val files by lazy { PhotoFiles(folder.newFolder("photos")) }
+    private val queue by lazy { Queue(db, clock, files) { "id-${++ids}" } }
     private val settings by lazy { SettingsStore(tempStore(folder.root, storeScope)) }
     private val signIn by lazy { Credentials(server.url("").toString(), "leo", "abcd") }
     private var saved: Credentials? = null

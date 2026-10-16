@@ -11,7 +11,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.time.Duration
 import java.time.Instant
@@ -27,7 +29,9 @@ class QueueTest {
     private val clock = TestClock()
     private val db = memoryDb()
     private var ids = 0
-    private val queue = Queue(db, clock) { "id-${++ids}" }
+    @get:Rule val folder = TemporaryFolder()
+    private val files by lazy { PhotoFiles(folder.newFolder("photos")) }
+    private val queue by lazy { Queue(db, clock, files) { "id-${++ids}" } }
 
     @After
     fun close() = db.close()
@@ -41,6 +45,120 @@ class QueueTest {
     }
 
     private suspend fun stored(id: String): Entry? = queue.observe().first().firstOrNull { it.id == id }
+
+    private var photoIds = 0
+
+    /** A copy on disk, as the dialog makes it when a photo is chosen. */
+    private fun copy(): DraftPhoto {
+        val id = "photo-${++photoIds}"
+        files.newFile(id, "jpg").writeText(id)
+        return DraftPhoto(id, "$id.jpg")
+    }
+
+    private fun onDisk(photo: DraftPhoto) = files.file(photo.file).exists()
+
+    @Test
+    fun `photos alone make a draft, which can be sent`() = runTest {
+        val photo = copy()
+        queue.saveDraft("", listOf(photo))
+
+        val draft = queue.draft()!!
+        assertEquals(listOf(photo.id), queue.photosOf(draft.id).map { it.id })
+
+        val sent = queue.send(graceSeconds = 0)!!
+        assertEquals(EntryState.PENDING, sent.state)
+    }
+
+    @Test
+    fun `the draft's photos follow the editor, in order, and a removed one's copy is deleted`() = runTest {
+        val (a, b, c) = listOf(copy(), copy(), copy())
+        queue.saveDraft("Coffee", listOf(a, b, c))
+        queue.saveDraft("Coffee", listOf(c, a))
+
+        val draft = queue.draft()!!
+        assertEquals(listOf(c.id to 0, a.id to 1), queue.photosOf(draft.id).map { it.id to it.position })
+        assertFalse(onDisk(b))
+        assertTrue(onDisk(a) && onDisk(c))
+    }
+
+    @Test
+    fun `discarding, deleting and a confirmed send delete the copies`() = runTest {
+        val kept = copy()
+        queue.saveDraft("Coffee", listOf(kept))
+        queue.discardDraft()
+        assertFalse(onDisk(kept))
+
+        val deleted = copy()
+        queue.saveDraft("Walk", listOf(deleted))
+        val walk = queue.send(graceSeconds = 0)!!
+        queue.delete(walk.id)
+        assertFalse(onDisk(deleted))
+
+        val confirmed = copy()
+        queue.saveDraft("Dinner", listOf(confirmed))
+        val dinner = queue.send(graceSeconds = 0)!!
+        queue.markSent(dinner.id)
+        assertFalse(onDisk(confirmed))
+        assertTrue(queue.photoFileNames().isEmpty())
+    }
+
+    @Test
+    fun `an entry taken back from its grace window keeps its photos, and letting it go deletes them`() = runTest {
+        val photo = copy()
+        queue.saveDraft("Coffee", listOf(photo))
+        val sent = queue.send(graceSeconds = 60)!!
+
+        val back = queue.takeBack(sent.id)!!
+        assertEquals(listOf(photo.id), queue.photosOf(back.id).map { it.id })
+
+        queue.saveDraft("", emptyList(), afresh = true)
+        assertNull(queue.draft())
+        assertFalse(onDisk(photo))
+    }
+
+    @Test
+    fun `letting go of a taken-back entry keeps the photos the new draft still holds`() = runTest {
+        val photo = copy()
+        queue.saveDraft("Coffee", listOf(photo))
+        val sent = queue.send(graceSeconds = 60)!!
+        queue.takeBack(sent.id)
+
+        queue.saveDraft("Something else", listOf(photo), afresh = true)
+
+        val draft = queue.draft()!!
+        assertTrue(draft.id != sent.id)
+        assertEquals(listOf(photo.id), queue.photosOf(draft.id).map { it.id })
+        assertTrue(onDisk(photo))
+    }
+
+    @Test
+    fun `retrying after unknown_photo uploads the photos again, other failures keep them uploaded`() = runTest {
+        val (a, b) = listOf(copy(), copy())
+        queue.saveDraft("Coffee", listOf(a))
+        val coffee = queue.send(graceSeconds = 0)!!
+        queue.saveDraft("Walk", listOf(b))
+        val walk = queue.send(graceSeconds = 0)!!
+        queue.markUploaded(a.id)
+        queue.markUploaded(b.id)
+
+        queue.markFailed(coffee.id, "Photo has not been uploaded.", UNKNOWN_PHOTO)
+        queue.markFailed(walk.id, "Category is invalid.", "invalid_category")
+        assertEquals(UNKNOWN_PHOTO, stored(coffee.id)!!.lastErrorCode)
+        queue.retry(coffee.id)
+        queue.retry(walk.id)
+
+        assertFalse(queue.photosOf(coffee.id).single().uploaded)
+        assertTrue(queue.photosOf(walk.id).single().uploaded)
+        assertNull(stored(coffee.id)!!.lastErrorCode)
+    }
+
+    @Test
+    fun `photo counts are kept per entry`() = runTest {
+        queue.saveDraft("Coffee", listOf(copy(), copy()))
+        val draft = queue.draft()!!
+
+        assertEquals(mapOf(draft.id to 2), queue.observePhotoCounts().first())
+    }
 
     @Test
     fun `typed text is kept as the one draft`() = runTest {

@@ -10,9 +10,11 @@ import androidx.glance.appwidget.updateAll
 import androidx.room.Room
 import androidx.work.WorkManager
 import io.github.leoalfaroc.journal.data.CredentialStore
+import io.github.leoalfaroc.journal.capture.Gallery
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.JournalDb
 import io.github.leoalfaroc.journal.data.KeystoreBox
+import io.github.leoalfaroc.journal.data.PhotoFiles
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.net.HttpJournalApi
@@ -25,6 +27,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -35,6 +38,10 @@ class AppContainer(
     val queue: Queue,
     val settings: SettingsStore,
     val credentials: CredentialStore,
+    /** The copies of the photos in the draft and in the queue. */
+    val photoFiles: PhotoFiles,
+    /** Where a photo taken with the camera button is also saved. */
+    val gallery: Gallery = Gallery { },
     val scheduler: Scheduler,
     val sender: Sender,
     /** Makes the API for a set of credentials. `Test connection` uses it with credentials not saved yet. */
@@ -79,7 +86,8 @@ fun realContainer(app: Application): AppContainer {
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
     ) { app.preferencesDataStoreFile(SettingsStore.NAME) }
     val db = Room.databaseBuilder(app, JournalDb::class.java, JournalDb.NAME).addMigrations(JournalDb.MIGRATION_1_2).build()
-    val queue = Queue(db, PhoneClock)
+    val photoFiles = PhotoFiles(File(app.filesDir, "photos"))
+    val queue = Queue(db, PhoneClock, photoFiles)
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, KeystoreBox())
     val client = journalHttpClient()
@@ -90,6 +98,7 @@ fun realContainer(app: Application): AppContainer {
         queue = queue,
         settings = settings,
         credentials = credentials,
+        photoFiles = photoFiles,
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
         sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor),
         apiFor = apiFor,

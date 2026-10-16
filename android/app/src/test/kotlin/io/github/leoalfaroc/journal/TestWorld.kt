@@ -12,6 +12,7 @@ import io.github.leoalfaroc.journal.data.Category
 import io.github.leoalfaroc.journal.data.CredentialStore
 import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.Entry
+import io.github.leoalfaroc.journal.data.PhotoFiles
 import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.SiteStatus
@@ -46,7 +47,8 @@ class TestWorld(folder: File) {
     private val store = tempStore(folder, storeScope)
     private var ids = 0
 
-    val queue = Queue(db, clock) { "id-${++ids}" }
+    val photoFiles = PhotoFiles(File(folder, "photos"))
+    val queue = Queue(db, clock, photoFiles) { "id-${++ids}" }
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, box)
     val work: WorkManager
@@ -59,6 +61,10 @@ class TestWorld(folder: File) {
     /** When set, the widget redraw throws it. */
     var widgetFailure: Exception? = null
     var unmetered = true
+    /** The names of the photos the gallery was asked to save. */
+    val galleryCopies = mutableListOf<String>()
+    /** When set, saving to the gallery throws it. */
+    var galleryFailure: Exception? = null
     val container: AppContainer
 
     val journal = Category("journal", "Journal")
@@ -74,6 +80,8 @@ class TestWorld(folder: File) {
             queue = queue,
             settings = settings,
             credentials = credentials,
+            photoFiles = photoFiles,
+            gallery = { photo -> galleryFailure?.let { throw it }; galleryCopies += photo.name },
             scheduler = scheduler,
             sender = sender,
             apiFor = apiFor,
