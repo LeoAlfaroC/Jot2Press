@@ -97,6 +97,8 @@ class CaptureModel(
     /** Photos whose copies were just made. Kept at once, so the copies are never left without a row. */
     suspend fun addPhotos(photos: List<DraftPhoto>) = mutex.withLock {
         if (photos.isEmpty()) return@withLock
+        // A closed dialog stores nothing more: copies that arrive after it have no row, and nobody else will delete them.
+        if (state.value.closed) return@withLock queue.forget(photos)
         state.update { it.copy(photos = (it.photos + photos).take(MAX_PHOTOS)) }
         save()
         queue.forget(photos.filterNot { it in state.value.photos })

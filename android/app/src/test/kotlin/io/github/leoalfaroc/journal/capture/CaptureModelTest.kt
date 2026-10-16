@@ -392,6 +392,18 @@ class CaptureModelTest {
     }
 
     @Test
+    fun `photos that arrive after the dialog closed are deleted, not left without a row`() = runTest {
+        val model = opened()
+        model.type("Coffee")
+        model.send()
+        val late = copy()
+
+        model.addPhotos(listOf(late))
+
+        assertFalse(world.photoFiles.file(late.file).exists())
+    }
+
+    @Test
     fun `removing the last photo of an empty editor lets go of the draft`() = runTest {
         val model = opened()
         val photo = copy()
