@@ -12,7 +12,7 @@ The plugin targets the current major version of WordPress and whatever that vers
 ## Install
 
 1. Build the zip: `cd plugin && npm run build`
-2. In WordPress: Plugins → Add New → Upload Plugin → choose `journal-entries.zip` → Activate.
+2. In WordPress: Plugins → Add New → Upload Plugin → choose `jot2press.zip` → Activate.
 3. In WordPress: Users → Profile → Application Passwords → add one for the journal app and copy it.
 
 Activation creates the default category, `journal`, if it does not exist.
