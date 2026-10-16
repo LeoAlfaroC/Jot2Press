@@ -81,7 +81,10 @@ import io.github.leoalfaroc.journal.ui.Corner
 import io.github.leoalfaroc.journal.ui.JournalType
 import io.github.leoalfaroc.journal.ui.LocalJournalColors
 import io.github.leoalfaroc.journal.ui.TextAction
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -396,7 +399,16 @@ private fun PhotoRow(photos: List<DraftPhoto>, remove: (String) -> Unit, loadThu
 @Composable
 private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (String) -> Unit, load: suspend (DraftPhoto) -> ImageBitmap?) {
     val colors = LocalJournalColors.current
-    val image by produceState<ImageBitmap?>(null, photo.id) { value = load(photo) }
+    // Decoding blocks, so it runs off the main thread; a loader that fails leaves the grey square instead of crashing the sheet.
+    val image by produceState<ImageBitmap?>(null, photo.id) {
+        value = try {
+            withContext(Dispatchers.IO) { load(photo) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
     Box(
         Modifier
             .size(72.dp)

@@ -1,5 +1,9 @@
 package io.github.leoalfaroc.journal.capture
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -8,6 +12,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -238,5 +243,22 @@ class CaptureSheetTest {
         val mark = compose.onNodeWithContentDescription("Remove photo 1").getUnclippedBoundsInRoot()
         assertEquals(48f, (mark.right - mark.left).value, 0.5f)
         assertEquals(48f, (mark.bottom - mark.top).value, 0.5f)
+    }
+
+    @Test
+    fun `a remove mark in the strip past the sheet's right padding still answers`() {
+        show(blank.copy(photos = photos(5)))
+
+        val rootWidth = compose.onRoot().getUnclippedBoundsInRoot().right
+        val mark = compose.onNodeWithContentDescription("Remove photo 4").getUnclippedBoundsInRoot()
+        val x = rootWidth - 10.dp
+        assertTrue(mark.left < x && x < mark.right && x < rootWidth)
+        val y = (mark.top + mark.bottom) / 2
+
+        compose.onNodeWithContentDescription("Remove photo 4").performTouchInput {
+            click(Offset((x - mark.left).toPx(), (y - mark.top).toPx()))
+        }
+
+        assertEquals(listOf("removePhoto:photo-4"), calls)
     }
 }
