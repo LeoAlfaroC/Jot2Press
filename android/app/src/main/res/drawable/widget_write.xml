@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Drawn large so that it only ever scales down to the cell. The radius keeps the same proportion at any size. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <size android:width="192dp" android:height="192dp" />
     <solid android:color="@color/widget_app" />
-    <corners android:radius="16dp" />
+    <corners android:radius="68dp" />
 </shape>

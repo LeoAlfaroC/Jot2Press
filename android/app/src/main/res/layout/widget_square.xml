@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A launcher gives a one-cell widget a cell that is seldom square, and may report its size wrongly.
+    The write button keeps itself square instead: an image that adjusts its bounds takes the shorter side.
+    The margin leaves room for the badge to stand out over the button's corner.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <FrameLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
+
+        <ImageView
+            android:id="@+id/write"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:layout_marginEnd="6dp"
+            android:adjustViewBounds="true"
+            android:contentDescription="Write"
+            android:scaleType="fitCenter"
+            android:src="@drawable/widget_write" />
+
+        <!-- Centred on the button, which sits 6dp down and 6dp in from the end. -->
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:layout_gravity="center"
+            android:layout_marginTop="3dp"
+            android:layout_marginEnd="3dp"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_write" />
+
+        <TextView
+            android:id="@+id/badge"
+            android:layout_width="wrap_content"
+            android:layout_height="20dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/widget_badge"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:minWidth="20dp"
+            android:paddingHorizontal="5dp"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+</FrameLayout>

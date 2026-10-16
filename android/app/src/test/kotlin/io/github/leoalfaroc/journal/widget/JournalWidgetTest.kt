@@ -1,14 +1,13 @@
 package io.github.leoalfaroc.journal.widget
 
+import android.app.Application
 import android.content.ComponentName
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
-import androidx.glance.appwidget.testing.unit.runGlanceAppWidgetUnitTest
-import androidx.glance.testing.unit.assertHasStartActivityClickAction
-import androidx.glance.testing.unit.hasContentDescription
-import androidx.glance.testing.unit.hasStartActivityClickAction
-import androidx.glance.testing.unit.hasText
+import android.graphics.Rect
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.leoalfaroc.journal.R
 import io.github.leoalfaroc.journal.TestWorld
 import io.github.leoalfaroc.journal.WidgetState
 import io.github.leoalfaroc.journal.capture.CaptureActivity
@@ -19,10 +18,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class JournalWidgetTest {
@@ -32,68 +33,86 @@ class JournalWidgetTest {
     @After
     fun close() = world.close()
 
-    @Test
-    fun `while nothing needs attention it is only the write button, which opens the capture dialog`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(configured = true)) }
+    /** The widget as the launcher shows it, in a cell of the given size. */
+    private fun shown(state: WidgetState, widthDp: Int = 51, heightDp: Int = 72): View {
+        val context = world.context
+        val density = context.resources.displayMetrics.density
+        val view = widgetViews(context, state).apply(context, FrameLayout(context))
+        view.measure(exactly(widthDp * density), exactly(heightDp * density))
+        view.layout(0, 0, view.measuredWidth, view.measuredHeight)
+        return view
+    }
 
-        onNode(hasText("Write")).assertExists()
-        onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
-        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(0)
+    private fun exactly(px: Float) = View.MeasureSpec.makeMeasureSpec(px.toInt(), View.MeasureSpec.EXACTLY)
+
+    /** Where a view sits in the square, which holds the button and the badge side by side. */
+    private fun View.bounds() = Rect(left, top, right, bottom)
+
+    private fun View.write() = findViewById<View>(R.id.write)
+    private fun View.badge() = findViewById<TextView>(R.id.badge)
+
+    private fun View.opens(): Class<*>? {
+        performClick()
+        return shadowOf(world.context as Application).nextStartedActivity?.component?.className?.let { Class.forName(it) }
     }
 
     @Test
-    fun `until the app is configured the write button opens settings`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(configured = false)) }
-
-        onNode(hasStartActivityClickAction<CaptureActivity>()).assertDoesNotExist()
-        onAllNodes(hasStartActivityClickAction<SettingsActivity>()).assertCountEquals(1)
+    fun `in a cell taller than wide the write button is a square as wide as the cell allows`() {
+        val write = shown(WidgetState(configured = true), widthDp = 51, heightDp = 72).write()
+        assertEquals(write.width, write.height)
+        assertEquals(45, write.width)
     }
 
     @Test
-    fun `entries that failed show as a badge that opens settings`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(failed = 2, configured = true)) }
-
-        onNode(hasText("2")).assertExists()
-        onNode(hasContentDescription("2 failed to send. Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
-        onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
+    fun `in a cell wider than tall it is a square as tall as the cell allows`() {
+        val write = shown(WidgetState(configured = true), widthDp = 90, heightDp = 64).write()
+        assertEquals(write.width, write.height)
+        assertEquals(58, write.width)
     }
 
     @Test
-    fun `the badge stops counting at 99`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(failed = 120, configured = true)) }
+    fun `while nothing needs attention it is only the write button, which opens the capture dialog`() {
+        val widget = shown(WidgetState(configured = true))
 
-        onNode(hasText("99+")).assertExists()
-        onNode(hasContentDescription("120 failed to send. Open settings")).assertExists()
+        assertEquals(View.GONE, widget.badge().visibility)
+        assertEquals("Write", widget.write().contentDescription)
+        assertEquals(CaptureActivity::class.java, widget.write().opens())
     }
 
     @Test
-    fun `a rejected sign-in shows in the badge in place of the failed entries`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        provideComposable { WidgetContent(WidgetState(failed = 2, signInRejected = true, configured = true)) }
-
-        onNode(hasText("!")).assertExists()
-        onNode(hasText("2")).assertDoesNotExist()
-        onNode(hasContentDescription("The site rejected the sign-in. Open settings")).assertHasStartActivityClickAction<SettingsActivity>()
+    fun `until the app is configured the write button opens settings`() {
+        assertEquals(SettingsActivity::class.java, shown(WidgetState(configured = false)).write().opens())
     }
 
     @Test
-    fun `the square takes the shorter side of a cell that is not square`() {
-        assertEquals(51.dp, squareSide(DpSize(51.dp, 72.dp)))
-        assertEquals(64.dp, squareSide(DpSize(90.dp, 64.dp)))
+    fun `entries that failed show as a badge over the button's corner that opens settings`() {
+        val widget = shown(WidgetState(failed = 2, configured = true))
+        val badge = widget.badge()
+        val write = widget.write().bounds()
+
+        assertEquals(View.VISIBLE, badge.visibility)
+        assertEquals("2", badge.text)
+        assertEquals("2 failed to send. Open settings", badge.contentDescription)
+        assertTrue(badge.bounds().contains(write.right - 1, write.top))
+        assertEquals(SettingsActivity::class.java, badge.opens())
+        assertEquals(CaptureActivity::class.java, widget.write().opens())
     }
 
     @Test
-    fun `in a tall cell the write button and the badge are still there`() = runGlanceAppWidgetUnitTest {
-        setContext(world.context)
-        setAppWidgetSize(DpSize(51.dp, 72.dp))
-        provideComposable { WidgetContent(WidgetState(failed = 1, configured = true)) }
+    fun `the badge stops counting at 99`() {
+        val badge = shown(WidgetState(failed = 120, configured = true)).badge()
 
-        onNode(hasStartActivityClickAction<CaptureActivity>()).assertExists()
-        onNode(hasContentDescription("1 failed to send. Open settings")).assertExists()
+        assertEquals("99+", badge.text)
+        assertEquals("120 failed to send. Open settings", badge.contentDescription)
+    }
+
+    @Test
+    fun `a rejected sign-in shows in the badge in place of the failed entries`() {
+        val badge = shown(WidgetState(failed = 2, signInRejected = true, configured = true)).badge()
+
+        assertEquals("!", badge.text)
+        assertEquals("The site rejected the sign-in. Open settings", badge.contentDescription)
+        assertEquals(SettingsActivity::class.java, badge.opens())
     }
 
     @Test

@@ -2,5 +2,6 @@
 <resources>
     <!-- These repeat DarkColors in ui/Theme.kt. -->
     <color name="widget_app">#9BD8A8</color>
+    <color name="widget_on_app">#121416</color>
     <color name="widget_sheet">#121416</color>
 </resources>
