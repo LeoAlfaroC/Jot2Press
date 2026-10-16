@@ -30,9 +30,25 @@ class PhotoEncoder(private val cache: File) {
         val (width, height) = imageSize(source) ?: throw UnreadablePhoto()
         var sample = 1
         while (maxOf(width, height) / sample > MAX_DECODE_SIDE) sample *= 2
-        val decoded = decodeUpright(source, sample) ?: throw UnreadablePhoto()
-        val opaque = onWhite(decoded)
+        while (true) {
+            // The size is known to be an image, so a failed decode or a lack of memory is not "unreadable": try again at half the size.
+            val prepared = try {
+                attempt(source, kind, sample, limit)
+            } catch (e: OutOfMemoryError) {
+                null
+            }
+            if (prepared != null) return prepared
+            sample *= 2
+            if (maxOf(width, height) / sample < MIN_SIDE) throw UnreadablePhoto()
+        }
+    }
+
+    /** Null when the photo could not be decoded at this sample size. */
+    private fun attempt(source: File, kind: PhotoKind, sample: Int, limit: Long): Prepared? {
+        val decoded = decodeUpright(source, sample) ?: return null
+        var opaque = decoded
         try {
+            opaque = onWhite(decoded)
             // A type the site does not take, but small enough, only needs a new type: one try at quality 95 first.
             val qualities = if (kind.mediaType == null && source.length() <= limit) listOf(95) + QUALITIES else QUALITIES
             return encode(opaque, qualities, limit)
@@ -65,7 +81,7 @@ class PhotoEncoder(private val cache: File) {
                 }
                 if (out.length() <= limit) return Prepared(out, JPEG, temporary = true)
             }
-        } catch (e: IOException) {
+        } catch (e: Throwable) {
             out.delete()
             throw e
         }
@@ -107,7 +123,12 @@ fun imageSize(file: File): Pair<Int, Int>? {
 fun decodeUpright(file: File, sampleSize: Int): Bitmap? {
     val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sampleSize }) ?: return null
     val turn = orientation(file) ?: return bitmap
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, turn, true).also { if (it !== bitmap) bitmap.recycle() }
+    return try {
+        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, turn, true).also { if (it !== bitmap) bitmap.recycle() }
+    } catch (e: Throwable) {
+        bitmap.recycle()
+        throw e
+    }
 }
 
 private fun orientation(file: File): Matrix? {

@@ -68,7 +68,7 @@ class PhotoEncoderTest {
     fun `a photo over the limit comes out a JPEG under it, and the copy is left as it was`() {
         val source = write(noisy(800, 600), Bitmap.CompressFormat.PNG)
         val before = source.readBytes()
-        val limit = 120_000L
+        val limit = 250_000L
 
         val sent = encoder.prepare(source, limit)
 
@@ -76,6 +76,7 @@ class PhotoEncoderTest {
         assertEquals("image/jpeg", sent.mediaType)
         assertEquals(PhotoKind.JPEG, PhotoKind.of(sent.file))
         assertTrue("${sent.file.length()} > $limit", sent.file.length() <= limit)
+        assertEquals("quality drops before the dimensions do", 800 to 600, size(sent.file))
         assertArrayEquals(before, source.readBytes())
     }
 
