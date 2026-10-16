@@ -203,6 +203,16 @@ class LocatorTest {
     }
 
     @Test
+    fun `an entry without Attach location is not followed`() = runTest {
+        world.queue.saveDraft("Plain")
+        val entry = world.queue.send(600, attachLocation = false)!!
+
+        locator.follow(entry, null)
+
+        assertEquals(0, world.search.starts)
+    }
+
+    @Test
     fun `when Android refuses the service the entry keeps what it has and nothing listens`() = runTest {
         world.search.refuse = true
 

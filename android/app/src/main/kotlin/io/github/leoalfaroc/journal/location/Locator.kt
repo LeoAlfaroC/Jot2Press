@@ -76,7 +76,7 @@ class Locator(
      */
     suspend fun follow(entry: Entry, pick: Pick?) = mutex.withLock {
         val graceEndsAt = entry.graceEndsAt
-        if (entry.state != EntryState.GRACE || graceEndsAt == null) return@withLock
+        if (!entry.attachLocation || entry.state != EntryState.GRACE || graceEndsAt == null) return@withLock
         if (pick != null && pick.fix.accuracy <= PRECISE_METRES) return@withLock
         // An approximate position never comes within 20 m.
         if (source.permission() != Permission.PRECISE) return@withLock
