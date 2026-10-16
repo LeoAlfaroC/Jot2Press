@@ -29,6 +29,9 @@ class Queue(
 
     suspend fun photosOf(entryId: String): List<Photo> = photoDao.of(entryId)
 
+    /** Deletes the copies of photos that were never kept: the editor was already full. */
+    fun forget(photos: List<DraftPhoto>) = files.delete(photos.map { it.file })
+
     /** Every copy the queue still needs. */
     suspend fun photoFileNames(): Set<String> = photoDao.files().toSet()
 

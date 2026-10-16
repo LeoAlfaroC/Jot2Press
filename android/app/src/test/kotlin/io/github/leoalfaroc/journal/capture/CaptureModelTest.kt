@@ -378,9 +378,12 @@ class CaptureModelTest {
     @Test
     fun `the editor keeps at most 10 photos, and removing one makes room`() = runTest {
         val model = opened()
-        model.addPhotos(List(12) { copy() })
+        val offered = List(12) { copy() }
+        model.addPhotos(offered)
 
         assertEquals(MAX_PHOTOS, model.ui.value.photos.size)
+        assertTrue(offered.take(MAX_PHOTOS).all { world.photoFiles.file(it.file).exists() })
+        assertTrue(offered.drop(MAX_PHOTOS).none { world.photoFiles.file(it.file).exists() })
         assertFalse(model.ui.value.canAddPhotos)
 
         model.removePhoto(model.ui.value.photos.first().id)

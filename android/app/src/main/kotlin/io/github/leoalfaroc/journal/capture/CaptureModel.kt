@@ -99,6 +99,7 @@ class CaptureModel(
         if (photos.isEmpty()) return@withLock
         state.update { it.copy(photos = (it.photos + photos).take(MAX_PHOTOS)) }
         save()
+        queue.forget(photos.filterNot { it in state.value.photos })
     }
 
     suspend fun removePhoto(id: String) = mutex.withLock {
@@ -142,11 +143,13 @@ class CaptureModel(
         val entry = queue.takeBack(last.id)
         if (entry != null) {
             val photos = queue.photosOf(entry.id).map { DraftPhoto(it.id, it.file) }
+            var overflow = emptyList<DraftPhoto>()
             state.update {
                 // The editor was empty when this began: what it holds now was typed meanwhile, and stays, after the entry's text.
                 val typedMeanwhile = it.text.takeIf(String::isNotBlank).orEmpty()
-                it.copy(text = entry.text + typedMeanwhile, photos = (photos + it.photos).take(MAX_PHOTOS), revision = it.revision + 1, entryDay = entry.day)
+                it.copy(text = entry.text + typedMeanwhile, photos = (photos + it.photos).take(MAX_PHOTOS).also { kept -> overflow = it.photos.filterNot { p -> p in kept } }, revision = it.revision + 1, entryDay = entry.day)
             }
+            queue.forget(overflow)
         }
         look()
     }
