@@ -27,10 +27,11 @@ This is a debug build, signed with the debug key of the machine that built it. A
 ## Set up
 
 1. Open the app. It opens on settings.
-2. Under Connection, enter the site URL (`https://…`), the username and the application password, and tap `Test connection`. When it works, it says which user it connected as and the site's upload limit.
-3. Add the widget: long-press the home screen → Widgets → the app's name.
+2. Under Connection, enter the site URL (`https://…`), the username and the application password. `Test connection` checks them with the site and says which user it connected as and the site's upload limit; it stores nothing. `Save` stores them, tested or not.
+3. The categories to choose from come from a successful `Test connection` of the credentials that are saved, before or after `Save`.
+4. Add the widget: long-press the home screen → Widgets → the app's name.
 
-Until `Test connection` has worked once, the widget's write button opens settings.
+Until credentials are saved, the widget's write button opens settings. Once saved they show as text; `Edit` opens them again, and `Cancel` drops what was typed.
 
 ## Use
 

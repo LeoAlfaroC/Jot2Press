@@ -57,7 +57,7 @@ class SettingsModelTest {
         model.editPassword(password)
     }
 
-    /** Answers with `answer` only once `gate` is open, so that a test can type while the request is in flight. */
+    /** Answers with `answer` only once `gate` is open, so that a test can act while the request is in flight. */
     private fun gated(gate: CountDownLatch, answer: MockResponse) = object : Dispatcher() {
         override fun dispatch(request: RecordedRequest): MockResponse {
             gate.await()
@@ -66,18 +66,18 @@ class SettingsModelTest {
     }
 
     @Test
-    fun `before anything is set up the fields are empty and the defaults show`() = runTest {
+    fun `before anything is set up the fields are empty, open for typing, and the defaults show`() = runTest {
         model.load()
 
         val ui = ui()
-        assertEquals(SettingsForm(revision = 1, grace = "60", pattern = Titles.DEFAULT_PATTERN), ui.form)
+        assertEquals(SettingsForm(revision = 1, editing = true, grace = "60", pattern = Titles.DEFAULT_PATTERN), ui.form)
         assertEquals("Empty", ui.queueSummary)
         assertEquals("2026-10-11 · Sunday, October 11", ui.titlePreview)
         assertFalse(ui.settings.configured)
     }
 
     @Test
-    fun `it loads what is stored`() = runTest {
+    fun `it loads what is stored, read-only`() = runTest {
         world.connect()
         world.settings.setGraceSeconds(90)
         world.settings.setTitlePattern("d MMMM yyyy")
@@ -87,38 +87,136 @@ class SettingsModelTest {
 
         val form = ui().form
         assertEquals(world.signIn, Credentials(form.siteUrl, form.username, form.password))
+        assertFalse(form.editing)
+        assertTrue(form.hasSaved)
         assertEquals("90", form.grace)
         assertEquals("d MMMM yyyy", form.pattern)
         assertEquals("1 waiting", ui().queueSummary)
     }
 
     @Test
-    fun `a connection that works is stored, with what the site reported`() = runTest {
+    fun `Save stores what is typed without asking the site`() = runTest {
+        model.load()
+        type()
+
+        model.save()
+
+        val ui = ui()
+        assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
+        assertEquals(0, world.server.requestCount)
+        assertTrue(ui.settings.configured)
+        assertFalse(ui.form.editing)
+        assertTrue(ui.form.hasSaved)
+        assertTrue(ui.form.saved)
+        assertEquals(2, ui.form.revision)
+        assertEquals("https://example.com/blog", ui.form.siteUrl)
+        assertEquals("leo", ui.form.username)
+        assertEquals("abcd efgh", ui.form.password)
+    }
+
+    @Test
+    fun `Save lets entries held by a rejected sign-in go again`() = runTest {
+        world.connect()
+        world.settings.setAuthError(true)
+        world.write("Coffee")
+        model.load()
+        model.edit()
+        model.editPassword("new secret")
+
+        model.save()
+
+        assertFalse(ui().settings.authError)
+        assertEquals(Credentials(world.signIn.siteUrl, world.signIn.username, "new secret"), world.credentials.get())
+        assertEquals(NetworkType.CONNECTED, world.jobs(Scheduler.SEND_WORK).single().constraints.requiredNetworkType)
+    }
+
+    @Test
+    fun `saved credentials cannot be typed over until Edit, and Cancel puts them back`() = runTest {
+        world.connect()
+        model.load()
+
+        model.editPassword("ignored")
+        assertEquals(world.signIn.password, ui().form.password)
+
+        model.edit()
+        assertTrue(ui().form.editing)
+        model.editPassword("other")
+        assertEquals("other", ui().form.password)
+        assertEquals(world.signIn, world.credentials.get())
+
+        model.cancel()
+
+        val form = ui().form
+        assertFalse(form.editing)
+        assertEquals(world.signIn.password, form.password)
+        assertEquals(2, form.revision)
+        assertEquals(world.signIn, world.credentials.get())
+    }
+
+    @Test
+    fun `an address that is not https, or a missing username or password, is refused without storing or asking`() = runTest {
+        model.load()
+
+        type(site = "http://example.com")
+        model.save()
+        assertEquals(TestState.Failed(URL_ERROR), ui().form.test)
+        model.testConnection()
+        assertEquals(TestState.Failed(URL_ERROR), ui().form.test)
+
+        type(password = "  ")
+        model.save()
+        assertEquals(TestState.Failed(SIGN_IN_ERROR), ui().form.test)
+        model.testConnection()
+        assertEquals(TestState.Failed(SIGN_IN_ERROR), ui().form.test)
+
+        assertTrue(ui().form.editing)
+        assertEquals(0, world.server.requestCount)
+        assertNull(world.credentials.get())
+    }
+
+    @Test
+    fun `Test connection checks what is typed and stores nothing, and Save then keeps what the site reported`() = runTest {
         world.server.enqueue(status())
         model.load()
         type()
 
         model.testConnection()
 
-        val ui = ui()
-        assertEquals(TestState.Passed("Connected as leo. Upload limit: 64 MB."), ui.form.test)
-        assertEquals("https://example.com/blog", ui.form.siteUrl)
-        assertEquals("leo", ui.form.username)
-        assertEquals(2, ui.form.revision)
-        assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
-        assertTrue(ui.settings.configured)
-        assertEquals("journal", ui.settings.categorySlug)
-        assertEquals(listOf(world.journal, world.travel), ui.settings.categories)
-        assertEquals(67_108_864L, ui.settings.maxUploadBytes)
-
+        assertEquals(TestState.Passed("Connected as leo. Upload limit: 64 MB."), ui().form.test)
+        assertNull(world.credentials.get())
+        assertFalse(ui().settings.configured)
+        assertEquals(emptyList<Category>(), ui().settings.categories)
         val request = world.server.takeRequest()
         assertEquals("GET", request.method)
         assertEquals("/wp-json/journal/v1/status", request.url.encodedPath)
         assertEquals(okhttp3.Credentials.basic("leo", "abcd efgh"), request.headers["Authorization"])
+
+        model.save()
+
+        val ui = ui()
+        assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
+        assertEquals("journal", ui.settings.categorySlug)
+        assertEquals(listOf(world.journal, world.travel), ui.settings.categories)
+        assertEquals(67_108_864L, ui.settings.maxUploadBytes)
     }
 
     @Test
-    fun `a connection that works lets the queue go again`() = runTest {
+    fun `what a test reported is not kept when other values are saved`() = runTest {
+        world.server.enqueue(status())
+        model.load()
+        type()
+        model.testConnection()
+
+        model.editPassword("changed")
+        model.save()
+
+        assertEquals("changed", world.credentials.get()?.password)
+        assertEquals(emptyList<Category>(), ui().settings.categories)
+        assertNull(ui().settings.maxUploadBytes)
+    }
+
+    @Test
+    fun `testing the saved credentials keeps what the site reported and lets the queue go again`() = runTest {
         world.connect()
         world.settings.setAuthError(true)
         world.write("Coffee")
@@ -132,33 +230,11 @@ class SettingsModelTest {
     }
 
     @Test
-    fun `an address that is not https is refused without asking the site`() = runTest {
-        model.load()
-        type(site = "http://example.com")
-
-        model.testConnection()
-
-        assertEquals(TestState.Failed(URL_ERROR), ui().form.test)
-        assertEquals(0, world.server.requestCount)
-        assertNull(world.credentials.get())
-    }
-
-    @Test
-    fun `a missing username or password is asked for`() = runTest {
-        model.load()
-        type(password = "  ")
-
-        model.testConnection()
-
-        assertEquals(TestState.Failed(SIGN_IN_ERROR), ui().form.test)
-        assertEquals(0, world.server.requestCount)
-    }
-
-    @Test
-    fun `credentials the site rejects are not stored, and the ones in use stay`() = runTest {
+    fun `credentials the site rejects in a test are not stored, and the ones in use stay`() = runTest {
         world.connect()
         world.server.enqueue(error(401, "incorrect_password", "The provided password is an invalid application password."))
         model.load()
+        model.edit()
         model.editPassword("wrong")
 
         model.testConnection()
@@ -166,6 +242,7 @@ class SettingsModelTest {
         assertEquals(TestState.Failed(REJECTED_ERROR), ui().form.test)
         assertEquals(world.signIn, world.credentials.get())
         assertEquals("wrong", ui().form.password)
+        assertTrue(ui().form.editing)
     }
 
     @Test
@@ -200,49 +277,30 @@ class SettingsModelTest {
     }
 
     @Test
-    fun `a password typed while the connection is tested is kept, and the tested one is stored`() = runTest {
+    fun `while the connection is tested, typing, Save and Cancel do nothing`() = runTest {
         val gate = CountDownLatch(1)
         world.server.dispatcher = gated(gate, status())
+        world.connect()
         model.load()
-        type()
+        model.edit()
+        model.editPassword("typed")
 
         val test = launch { model.testConnection() }
         try {
             withContext(Dispatchers.IO) { world.server.takeRequest() }
             model.editPassword("new secret")
+            model.save()
+            model.cancel()
             assertEquals(TestState.Running, ui().form.test)
+            assertTrue(ui().form.editing)
         } finally {
             gate.countDown()
         }
         test.join()
 
-        val ui = ui()
-        assertEquals("new secret", ui.form.password)
-        assertEquals(TestState.Passed("Connected with the earlier values. Test again to use these."), ui.form.test)
-        assertEquals(Credentials("https://example.com/blog", "leo", "abcd efgh"), world.credentials.get())
-        assertTrue(ui.settings.configured)
-    }
-
-    @Test
-    fun `a password typed while a refused connection is tested is kept, with no message about the old one`() = runTest {
-        val gate = CountDownLatch(1)
-        world.server.dispatcher = gated(gate, error(401, "incorrect_password", "The provided password is an invalid application password."))
-        model.load()
-        type()
-
-        val test = launch { model.testConnection() }
-        try {
-            withContext(Dispatchers.IO) { world.server.takeRequest() }
-            model.editPassword("new secret")
-        } finally {
-            gate.countDown()
-        }
-        test.join()
-
-        val ui = ui()
-        assertEquals("new secret", ui.form.password)
-        assertEquals(TestState.Idle, ui.form.test)
-        assertNull(world.credentials.get())
+        assertEquals("typed", ui().form.password)
+        assertEquals(TestState.Passed("Connected as leo. Upload limit: 64 MB."), ui().form.test)
+        assertEquals(world.signIn, world.credentials.get())
     }
 
     @Test

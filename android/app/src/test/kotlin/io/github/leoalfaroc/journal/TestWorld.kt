@@ -89,7 +89,7 @@ class TestWorld(folder: File) {
 
     val signIn = Credentials("https://example.com/blog", "leo", "abcd efgh")
 
-    /** As after a successful `Test connection`. */
+    /** As after saving credentials and a successful `Test connection` of them. */
     suspend fun connect(vararg categories: Category = arrayOf(journal, travel)) {
         credentials.save(signIn)
         settings.connectionSucceeded(SiteStatus("leo", journal, categories.toList(), 67_108_864, "1.0.0"))

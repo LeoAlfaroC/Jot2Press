@@ -76,6 +76,19 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `saved credentials configure the app and end a rejected sign-in, without inventing what the site reports`() = runTest {
+        settings.setAuthError(true)
+        settings.credentialsSaved()
+
+        val kept = settings.get()
+        assertEquals(true, kept.configured)
+        assertEquals(false, kept.authError)
+        assertNull(kept.categorySlug)
+        assertEquals(emptyList<Category>(), kept.categories)
+        assertNull(kept.maxUploadBytes)
+    }
+
+    @Test
     fun `the first successful connection configures the app and chooses the default category`() = runTest {
         settings.setAuthError(true)
         settings.connectionSucceeded(site(journal, travel))

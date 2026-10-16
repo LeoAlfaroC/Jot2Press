@@ -7,6 +7,7 @@ import io.github.leoalfaroc.journal.data.Credentials
 import io.github.leoalfaroc.journal.data.MAX_GRACE_SECONDS
 import io.github.leoalfaroc.journal.data.PostStatus
 import io.github.leoalfaroc.journal.data.Settings
+import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.normalizeSiteUrl
 import io.github.leoalfaroc.journal.net.ApiResult
 import io.github.leoalfaroc.journal.queueFacts
@@ -30,10 +31,16 @@ sealed interface TestState {
 data class SettingsForm(
     /** Goes up each time the model, not the user, fills the fields: they then start again from these values. 0 before `load`. */
     val revision: Int = 0,
+    /** The sign-in is open for typing. Until credentials are saved, it always is. */
+    val editing: Boolean = false,
+    /** Credentials are stored, so Cancel has something to go back to. */
+    val hasSaved: Boolean = false,
     val siteUrl: String = "",
     val username: String = "",
     val password: String = "",
     val test: TestState = TestState.Idle,
+    /** The last thing done to the sign-in was a Save. */
+    val saved: Boolean = false,
     val grace: String = "",
     val graceError: String? = null,
     val pattern: String = "",
@@ -53,13 +60,20 @@ const val GRACE_ERROR = "A whole number from 0 to $MAX_GRACE_SECONDS."
 const val PATTERN_ERROR = "Not a date pattern. It was not saved."
 const val URL_ERROR = "The site URL must be an https:// address."
 const val SIGN_IN_ERROR = "Enter the username and the application password."
-const val EARLIER_VALUES = "Connected with the earlier values. Test again to use these."
 const val REJECTED_ERROR = "The site rejected the username or the application password."
 
 /** The settings screen without its screen. */
 class SettingsModel(private val container: AppContainer, private val deviceLocale: () -> Locale = { Locale.getDefault() }) {
     private val form = MutableStateFlow(SettingsForm())
     private val settings = container.settings
+
+    /** What is stored, for Cancel to go back to. */
+    @Volatile
+    private var stored: Credentials? = null
+
+    /** The last credentials the site accepted, with what it reported: kept when exactly these are saved. */
+    @Volatile
+    private var accepted: Pair<Credentials, SiteStatus>? = null
 
     val ui: Flow<SettingsUi> = combine(form, settings.flow, container.queue.observe()) { form, settings, entries ->
         SettingsUi(
@@ -73,77 +87,113 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
     /** Fills the fields with what is stored. */
     suspend fun load() {
         val signIn = container.credentials.get()
-        val stored = settings.get()
+        stored = signIn
+        val kept = settings.get()
         form.update {
             it.copy(
                 revision = it.revision + 1,
+                editing = signIn == null,
+                hasSaved = signIn != null,
                 siteUrl = signIn?.siteUrl.orEmpty(),
                 username = signIn?.username.orEmpty(),
                 password = signIn?.password.orEmpty(),
-                grace = stored.graceSeconds.toString(),
-                pattern = stored.titlePattern,
+                grace = kept.graceSeconds.toString(),
+                pattern = kept.titlePattern,
             )
         }
     }
 
-    // Typing while a test runs keeps the test running, so the button stays disabled and a second test cannot start.
-    fun editSiteUrl(text: String) = form.update { it.copy(siteUrl = text, test = it.settled()) }
-    fun editUsername(text: String) = form.update { it.copy(username = text, test = it.settled()) }
-    fun editPassword(text: String) = form.update { it.copy(password = text, test = it.settled()) }
+    /** Opens the saved sign-in for typing. */
+    fun edit() = form.update { if (it.test == TestState.Running) it else it.copy(editing = true, test = TestState.Idle, saved = false) }
 
-    /**
-     * Calls the status endpoint with what is typed. Only credentials that worked are stored:
-     * a typing mistake never replaces credentials the sender is using.
-     */
-    suspend fun testConnection() {
-        val typed = form.value
-        if (typed.test == TestState.Running) return
-        val site = normalizeSiteUrl(typed.siteUrl) ?: return failed(URL_ERROR)
-        if (typed.username.isBlank() || typed.password.isBlank()) return failed(SIGN_IN_ERROR)
-        val signIn = Credentials(site, typed.username.trim(), typed.password.trim())
-
-        form.update { it.copy(test = TestState.Running) }
-        when (val result = container.apiFor(signIn).status()) {
-            is ApiResult.Ok -> {
-                container.credentials.save(signIn)
-                settings.connectionSucceeded(result.value)
-                // Whatever waited for working credentials can go now.
-                container.scheduler.sync()
-                val passed = TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}.")
-                answerPassed(typed) {
-                    it.copy(
-                        revision = it.revision + 1,
-                        siteUrl = signIn.siteUrl,
-                        username = signIn.username,
-                        password = signIn.password,
-                        test = passed,
-                    )
-                }
-            }
-            is ApiResult.Refused -> {
-                val message = when {
-                    result.status == 401 -> REJECTED_ERROR
-                    result.code == "rest_no_route" -> Sender.PLUGIN_MISSING
-                    else -> result.message
-                }
-                answer(typed) { it.copy(test = TestState.Failed(message)) }
-            }
-            is ApiResult.Unreachable -> answer(typed) { it.copy(test = TestState.Failed("Could not reach the site: ${result.reason}")) }
+    /** Drops what was typed and shows the saved sign-in again. */
+    fun cancel() {
+        val signIn = stored ?: return
+        form.update {
+            if (!it.editing || it.test == TestState.Running) return@update it
+            it.copy(
+                revision = it.revision + 1,
+                editing = false,
+                siteUrl = signIn.siteUrl,
+                username = signIn.username,
+                password = signIn.password,
+                test = TestState.Idle,
+            )
         }
     }
 
-    /** Applies the answer to a test, unless the person typed over the sign-in while it ran: then the answer is stale and the fields stay as typed. */
-    private fun answer(typed: SettingsForm, change: (SettingsForm) -> SettingsForm) = form.update {
-        if (it.siteUrl == typed.siteUrl && it.username == typed.username && it.password == typed.password) change(it) else it.copy(test = TestState.Idle)
+    fun editSiteUrl(text: String) = typing { it.copy(siteUrl = text) }
+    fun editUsername(text: String) = typing { it.copy(username = text) }
+    fun editPassword(text: String) = typing { it.copy(password = text) }
+
+    /** Typing counts only while editing, and not while a test runs: the screen locks the fields then. */
+    private fun typing(change: (SettingsForm) -> SettingsForm) = form.update {
+        if (!it.editing || it.test == TestState.Running) it else change(it).copy(test = TestState.Idle, saved = false)
     }
 
-    /** A pass for values that were typed over: the earlier ones were stored, and the form says so. */
-    private fun answerPassed(typed: SettingsForm, change: (SettingsForm) -> SettingsForm) = form.update {
-        if (it.siteUrl == typed.siteUrl && it.username == typed.username && it.password == typed.password) change(it) else it.copy(test = TestState.Passed(EARLIER_VALUES))
+    /** Stores what is typed, tested or not. Checking it with the site is `Test connection`'s job. */
+    suspend fun save() {
+        val typed = form.value
+        if (!typed.editing || typed.test == TestState.Running) return
+        val signIn = signIn(typed) ?: return
+        container.credentials.save(signIn)
+        stored = signIn
+        settings.credentialsSaved()
+        accepted?.takeIf { it.first == signIn }?.let { settings.connectionSucceeded(it.second) }
+        // Entries held by a rejected sign-in can go now.
+        container.scheduler.sync()
+        form.update {
+            it.copy(
+                revision = it.revision + 1,
+                editing = false,
+                hasSaved = true,
+                siteUrl = signIn.siteUrl,
+                username = signIn.username,
+                password = signIn.password,
+                test = TestState.Idle,
+                saved = true,
+            )
+        }
     }
 
-    /** The test state after an edit: a test still running stays so. */
-    private fun SettingsForm.settled(): TestState = if (test == TestState.Running) test else TestState.Idle
+    /** Asks the site whether the sign-in shown works. Stores no credentials: only Save does. */
+    suspend fun testConnection() {
+        val typed = form.value
+        if (typed.test == TestState.Running) return
+        val signIn = signIn(typed) ?: return
+
+        form.update { it.copy(test = TestState.Running, saved = false) }
+        val test = when (val result = container.apiFor(signIn).status()) {
+            is ApiResult.Ok -> {
+                accepted = signIn to result.value
+                if (signIn == stored) {
+                    settings.connectionSucceeded(result.value)
+                    // Whatever waited for working credentials can go now.
+                    container.scheduler.sync()
+                }
+                TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}.")
+            }
+            is ApiResult.Refused -> TestState.Failed(
+                when {
+                    result.status == 401 -> REJECTED_ERROR
+                    result.code == "rest_no_route" -> Sender.PLUGIN_MISSING
+                    else -> result.message
+                },
+            )
+            is ApiResult.Unreachable -> TestState.Failed("Could not reach the site: ${result.reason}")
+        }
+        form.update { it.copy(test = test) }
+    }
+
+    /** The credentials as typed, cleaned up, or null after saying what is wrong with them. */
+    private fun signIn(typed: SettingsForm): Credentials? {
+        val site = normalizeSiteUrl(typed.siteUrl)
+        return when {
+            site == null -> null.also { failed(URL_ERROR) }
+            typed.username.isBlank() || typed.password.isBlank() -> null.also { failed(SIGN_IN_ERROR) }
+            else -> Credentials(site, typed.username.trim(), typed.password.trim())
+        }
+    }
 
     /** Stores the grace window when it is a number from 0 to 600; otherwise keeps the stored one and says why. */
     suspend fun editGrace(text: String) {

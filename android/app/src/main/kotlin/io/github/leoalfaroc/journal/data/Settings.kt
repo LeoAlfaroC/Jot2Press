@@ -54,9 +54,9 @@ data class Settings(
     val categories: List<Category> = emptyList(),
     val defaultCategory: Category? = null,
     val maxUploadBytes: Long? = null,
-    /** True once `Test connection` has succeeded. */
+    /** True once credentials have been saved. */
     val configured: Boolean = false,
-    /** The site rejected the credentials; nothing is sent until a `Test connection` succeeds. */
+    /** The site rejected the credentials; nothing is sent until others are saved or a `Test connection` of these succeeds. */
     val authError: Boolean = false,
     val categoryNotice: CategoryNotice? = null,
 )
@@ -83,7 +83,13 @@ class SettingsStore(private val store: DataStore<Preferences>) {
 
     suspend fun dismissCategoryNotice() = change { it.clearNotice() }
 
-    /** `Test connection` succeeded: keeps what the site reported and lets sending resume. */
+    /** Credentials were saved, tested or not: there is somewhere to send to, and the rejection was of other credentials. */
+    suspend fun credentialsSaved() = change { p ->
+        p[CONFIGURED] = true
+        p[AUTH_ERROR] = false
+    }
+
+    /** `Test connection` of the saved credentials succeeded: keeps what the site reported and lets sending resume. */
     suspend fun connectionSucceeded(status: SiteStatus) = change { p ->
         val chosen = p[CATEGORY]
         if (chosen == null) {

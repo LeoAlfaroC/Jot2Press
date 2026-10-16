@@ -69,7 +69,7 @@ class Sender(
 
     private suspend fun drain(): Outcome {
         while (true) {
-            // Read again for every entry: `Test connection` may have stored other credentials since the last one.
+            // Read again for every entry: `Save` may have stored other credentials since the last one.
             if (settings.get().authError) return Outcome.HELD
             val signIn = credentials() ?: return Outcome.HELD
             queue.promoteDue()

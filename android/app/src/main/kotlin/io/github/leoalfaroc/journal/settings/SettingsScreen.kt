@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
@@ -61,6 +63,9 @@ class SettingsActions(
     val editUsername: (String) -> Unit = {},
     val editPassword: (String) -> Unit = {},
     val testConnection: () -> Unit = {},
+    val edit: () -> Unit = {},
+    val cancel: () -> Unit = {},
+    val save: () -> Unit = {},
     val editGrace: (String) -> Unit = {},
     val setWifiOnly: (Boolean) -> Unit = {},
     val chooseCategory: (String) -> Unit = {},
@@ -69,7 +74,12 @@ class SettingsActions(
     val editPattern: (String) -> Unit = {},
 )
 
-const val AUTH_ERROR_LINE = "The site rejected these credentials. Nothing is sent until Test connection succeeds."
+const val AUTH_ERROR_LINE = "The site rejected these credentials. Entries wait on the phone. Edit them and save again."
+const val EDITING_LINE = "Sending uses the saved values until you tap Save."
+const val SAVED_LINE = "Saved."
+
+/** The saved password is never shown, not even its length. */
+private const val HIDDEN_PASSWORD = "••••••••••••"
 const val NO_CATEGORIES_LINE = "Available after Test connection succeeds."
 const val PUBLIC_LINE = "Every entry is public as soon as it is sent."
 const val EXISTING_POSTS_LINE = "Category and post status apply to day posts created from now on. Existing posts keep theirs."
@@ -108,27 +118,35 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
             Text(ui.queueSummary, style = JournalType.excerpt, color = colors.you)
         }
 
-        Heading("Connection")
-        if (settings.authError) Line(AUTH_ERROR_LINE)
-        Field("Site URL", form.siteUrl, form.revision, actions.editSiteUrl, keyboard = KeyboardType.Uri)
-        Field("Username", form.username, form.revision, actions.editUsername)
-        Field("Application password", form.password, form.revision, actions.editPassword, keyboard = KeyboardType.Password, hidden = true)
+        // The sign-in cannot be typed over by accident: it opens with Edit, and only Save stores it.
         val testing = form.test == TestState.Running
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .clip(Corner)
-                .border(2.dp, colors.app, Corner)
-                .clickable(enabled = !testing, role = Role.Button, onClick = actions.testConnection),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(if (testing) "Testing…" else "Test connection", style = JournalType.send, color = colors.app)
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Connection", Modifier.weight(1f).semantics { heading() }, style = JournalType.send, color = colors.app)
+            if (!form.editing) TextAction("Edit", actions.edit, flush = Alignment.End)
         }
+        if (form.editing) {
+            Field("Site URL", form.siteUrl, form.revision, actions.editSiteUrl, keyboard = KeyboardType.Uri, enabled = !testing)
+            Field("Username", form.username, form.revision, actions.editUsername, enabled = !testing)
+            Field("Application password", form.password, form.revision, actions.editPassword, keyboard = KeyboardType.Password, hidden = true, enabled = !testing)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (form.hasSaved) Action("Cancel", actions.cancel, Modifier.weight(1f), enabled = !testing)
+                Action("Save", actions.save, Modifier.weight(1f), filled = true, enabled = !testing)
+            }
+        } else {
+            Shown("Site URL", form.siteUrl)
+            Shown("Username", form.username)
+            Shown("Application password", HIDDEN_PASSWORD)
+        }
+        Action(if (testing) "Testing…" else "Test connection", actions.testConnection, Modifier.fillMaxWidth(), enabled = !testing)
+        if (settings.authError) Line(AUTH_ERROR_LINE, colors.danger)
         when (val test = form.test) {
             is TestState.Passed -> Line(test.message)
-            is TestState.Failed -> Line(test.message)
-            else -> Unit
+            is TestState.Failed -> Line(test.message, colors.danger)
+            TestState.Running -> Unit
+            TestState.Idle -> when {
+                form.saved -> Line(SAVED_LINE)
+                form.editing && form.hasSaved -> Line(EDITING_LINE)
+            }
         }
 
         Heading("Sending")
@@ -164,8 +182,38 @@ private fun Heading(text: String) {
 
 /** Something the app says. */
 @Composable
-private fun Line(text: String) {
-    Text(text, style = JournalType.label, color = LocalJournalColors.current.app)
+private fun Line(text: String, color: Color = LocalJournalColors.current.app) {
+    Text(text, style = JournalType.label, color = color)
+}
+
+/** A button the width it is given: outlined, or filled for the one that commits. */
+@Composable
+private fun Action(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, filled: Boolean = false, enabled: Boolean = true) {
+    val colors = LocalJournalColors.current
+    Box(
+        modifier
+            .heightIn(min = 52.dp)
+            .alpha(if (enabled) 1f else 0.4f)
+            .clip(Corner)
+            .then(if (filled) Modifier.background(colors.app) else Modifier.border(2.dp, colors.app, Corner))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, style = JournalType.send, color = if (filled) colors.onApp else colors.app)
+    }
+}
+
+/** A saved value, as text: it can change only after Edit. */
+@Composable
+private fun Shown(label: String, value: String) {
+    val colors = LocalJournalColors.current
+    Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, style = JournalType.label, color = colors.quiet)
+            Text(value, style = JournalType.excerpt, color = colors.you)
+        }
+        HorizontalDivider(color = colors.quiet.copy(alpha = 0.4f))
+    }
 }
 
 @Composable
@@ -201,6 +249,7 @@ private fun Field(
     keyboard: KeyboardType = KeyboardType.Text,
     hidden: Boolean = false,
     below: String? = null,
+    enabled: Boolean = true,
 ) {
     val colors = LocalJournalColors.current
     var text by remember(revision) { mutableStateOf(value) }
@@ -211,6 +260,7 @@ private fun Field(
             onChange(it)
         },
         modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
         label = { Text(label) },
         supportingText = below?.let { { Text(it, style = JournalType.label, color = colors.app) } },
         singleLine = true,

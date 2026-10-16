@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -18,6 +19,7 @@ import io.github.leoalfaroc.journal.data.PostStatus
 import io.github.leoalfaroc.journal.data.Settings
 import io.github.leoalfaroc.journal.ui.JournalTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,6 +36,9 @@ class SettingsScreenTest {
         editUsername = { calls += "username:$it" },
         editPassword = { calls += "password:$it" },
         testConnection = { calls += "testConnection" },
+        edit = { calls += "edit" },
+        cancel = { calls += "cancel" },
+        save = { calls += "save" },
         editGrace = { calls += "grace:$it" },
         setWifiOnly = { calls += "wifiOnly:$it" },
         chooseCategory = { calls += "category:$it" },
@@ -41,8 +46,9 @@ class SettingsScreenTest {
         setTitleLanguage = { calls += "titleLanguage:$it" },
         editPattern = { calls += "pattern:$it" },
     )
-    private val form = SettingsForm(revision = 1, grace = "60", pattern = Titles.DEFAULT_PATTERN)
+    private val form = SettingsForm(revision = 1, editing = true, grace = "60", pattern = Titles.DEFAULT_PATTERN)
     private val fresh = SettingsUi(form, Settings(), queueSummary = "Empty", titlePreview = "2026-10-11 · Sunday, October 11")
+    private val stored = form.copy(editing = false, hasSaved = true, siteUrl = "https://example.com/blog", username = "leo", password = "abcd efgh")
     private val connected = Settings(
         configured = true,
         categorySlug = "journal",
@@ -65,22 +71,58 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun `what is typed in the connection fields goes to the model, and Test connection asks for the test`() {
+    fun `the first time, what is typed goes to the model, and Save and Test connection ask for theirs`() {
         show(fresh)
 
         compose.onNodeWithText("Site URL").performTextReplacement("example.com")
         compose.onNodeWithText("Username").performTextReplacement("leo")
         compose.onNodeWithText("Application password").performTextReplacement("abcd")
-        compose.onNodeWithText("Test connection").assertIsEnabled().performClick()
+        compose.onNodeWithText("Save").assertIsEnabled().performClick()
+        compose.onNodeWithText("Test connection").performScrollTo().assertIsEnabled().performClick()
 
-        assertEquals(listOf("siteUrl:example.com", "username:leo", "password:abcd", "testConnection"), calls)
+        assertEquals(listOf("siteUrl:example.com", "username:leo", "password:abcd", "save", "testConnection"), calls)
+        compose.onNodeWithText("Cancel").assertDoesNotExist()
+        compose.onNodeWithText("Edit").assertDoesNotExist()
         compose.onNodeWithText(AUTH_ERROR_LINE).assertDoesNotExist()
     }
 
     @Test
-    fun `while the test runs the button waits, and afterwards the result is shown`() {
-        show(fresh.copy(form = form.copy(test = TestState.Running)))
+    fun `saved credentials are shown as text, with the password hidden, until Edit`() {
+        show(fresh.copy(settings = connected, form = stored))
+
+        compose.onNodeWithText("https://example.com/blog").assertExists()
+        compose.onNodeWithText("leo").assertExists()
+        compose.onNodeWithText("abcd efgh").assertDoesNotExist()
+        compose.onNodeWithText("Save").assertDoesNotExist()
+        compose.onNodeWithText("Cancel").assertDoesNotExist()
+        compose.onNodeWithText("Test connection").performScrollTo().performClick()
+        compose.onNodeWithText("Edit").performClick()
+
+        assertEquals(listOf("testConnection", "edit"), calls)
+    }
+
+    @Test
+    fun `while saved credentials are edited, Cancel and Save are offered above Test connection`() {
+        show(fresh.copy(settings = connected, form = stored.copy(editing = true)))
+
+        compose.onNodeWithText(EDITING_LINE).assertExists()
+        val save = compose.onNodeWithText("Save").getUnclippedBoundsInRoot()
+        val test = compose.onNodeWithText("Test connection").getUnclippedBoundsInRoot()
+        assertTrue(save.bottom <= test.top)
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onNodeWithText("Save").performClick()
+
+        assertEquals(listOf("cancel", "save"), calls)
+    }
+
+    @Test
+    fun `while the test runs the fields and the buttons wait`() {
+        show(fresh.copy(settings = connected, form = stored.copy(editing = true, test = TestState.Running)))
+
         compose.onNodeWithText("Testing…").assertIsNotEnabled()
+        compose.onNodeWithText("Save").assertIsNotEnabled()
+        compose.onNodeWithText("Cancel").assertIsNotEnabled()
+        compose.onNodeWithText("Application password").assertIsNotEnabled()
     }
 
     @Test
@@ -90,8 +132,14 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun `a save is confirmed`() {
+        show(fresh.copy(settings = connected, form = stored.copy(saved = true)))
+        compose.onNodeWithText(SAVED_LINE).assertExists()
+    }
+
+    @Test
     fun `while the site rejects the credentials the Connection section says so`() {
-        show(fresh.copy(settings = connected.copy(authError = true), form = form.copy(test = TestState.Failed(REJECTED_ERROR))))
+        show(fresh.copy(settings = connected.copy(authError = true), form = stored.copy(editing = true, test = TestState.Failed(REJECTED_ERROR))))
 
         compose.onNodeWithText(AUTH_ERROR_LINE).assertExists()
         compose.onNodeWithText(REJECTED_ERROR).assertExists()
