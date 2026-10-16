@@ -44,8 +44,8 @@ class SettingsViewModel(private val container: AppContainer) : ViewModel() {
         .filter { it.form.revision > 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val queue: StateFlow<QueueUi?> = combine(container.queue.observe(), container.settings.flow) { entries, settings ->
-        queueUi(entries, settings, container.clock, container.onUnmeteredNetwork())
+    val queue: StateFlow<QueueUi?> = combine(container.queue.observe(), container.settings.flow, container.queue.observePhotoCounts()) { entries, settings, photos ->
+        queueUi(entries, settings, container.clock, container.onUnmeteredNetwork(), photos)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {

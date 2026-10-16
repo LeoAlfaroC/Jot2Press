@@ -2,7 +2,7 @@
 
 The capture app. A widget on the home screen opens a small dialog over the launcher, and what is typed there is sent to the journal plugin in this repository, which adds it to the day's post.
 
-This version sends text entries. Photos and location are not built yet.
+This version sends text and photos. Location is not built yet.
 
 ## Requirements
 
@@ -36,6 +36,8 @@ Until credentials are saved, the widget's write button opens settings. Once save
 ## Use
 
 - The write button on the widget opens the capture dialog. `Send` stores the entry and closes the dialog.
+- The camera and photos buttons beside `Send` add up to 10 photos to an entry: the system photo picker for several at once, the phone's camera app for one. An entry can be photos alone. A photo taken with the camera is also saved to the gallery, in an album with the app's name; that copy is yours and stays.
+- Photos are sent as they are when they fit the site's upload limit. A larger one is re-encoded as JPEG until it fits.
 - An entry waits for the grace window, 60 seconds unless changed, before it is sent. During that time the dialog shows it at the top, with `Edit` and `Delete`.
 - Closing the dialog with text in it keeps the text as a draft.
 - The widget is one square. A red badge appears on its corner only when something needs fixing: a number for entries that could not be sent, `!` when the site rejected the sign-in. Tapping the badge opens the queue, where those entries are retried or deleted, or settings for the sign-in. Entries waiting to be sent and a kept draft show nothing.
@@ -60,6 +62,8 @@ The first command tests everything except the encryption of the credentials, whi
 - The site URL, the username and the application password are encrypted with a key held in the Android Keystore.
 - The app talks only to the site it was given, over HTTPS. Plain HTTP is turned off.
 - App data is left out of device backups and transfers. An unsent entry exists only on the phone, and is deleted from it once the site confirms it.
+- The app keeps its own copy of each photo of an entry until the site confirms the entry, then deletes it. Originals in the gallery are never changed.
+- A photo re-encoded to fit the upload limit loses its metadata, location included. A photo sent as it is keeps whatever its file holds, which can include where it was taken.
 
 ## Licences
 

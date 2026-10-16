@@ -44,6 +44,16 @@ class QueueUiTest {
     }
 
     @Test
+    fun `a row starts with its number of photos, and shows only that for an entry of photos alone`() {
+        val photosOnly = sent("photos", "", EntryState.PENDING, "14:25:00")
+
+        val rows = queueUi(listOf(grace, photosOnly), Settings(), clock, true, photoCounts = mapOf("grace" to 2, "photos" to 1)).rows
+
+        assertEquals("2 photos · Coffee with Ana", rows[0].text)
+        assertEquals("1 photo", rows[1].text)
+    }
+
+    @Test
     fun `an entry the server keeps refusing shows the answer and since when, and after an hour the screen says why the rest wait`() {
         val began = clock.millis()
         val refused = pending.copy(lastError = "The site answered with an error (HTTP 503).", failingSince = began)

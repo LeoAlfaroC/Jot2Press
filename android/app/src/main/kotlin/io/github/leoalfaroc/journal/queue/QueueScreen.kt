@@ -43,6 +43,7 @@ import io.github.leoalfaroc.journal.data.Settings
 import io.github.leoalfaroc.journal.data.day
 import io.github.leoalfaroc.journal.data.isStuck
 import io.github.leoalfaroc.journal.data.time
+import io.github.leoalfaroc.journal.data.withPhotos
 import io.github.leoalfaroc.journal.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.journal.ui.Corner
 import io.github.leoalfaroc.journal.ui.JournalType
@@ -83,7 +84,13 @@ private val HOUR = DateTimeFormatter.ofPattern("HH:mm")
 private val OTHER_DAY = DateTimeFormatter.ofPattern("d MMM", Locale.ENGLISH)
 
 /** `entries` as `Queue.observe` gives them: newest first, the draft among them. */
-fun queueUi(entries: List<Entry>, settings: Settings, clock: Clock, onUnmeteredNetwork: Boolean): QueueUi {
+fun queueUi(
+    entries: List<Entry>,
+    settings: Settings,
+    clock: Clock,
+    onUnmeteredNetwork: Boolean,
+    photoCounts: Map<String, Int> = emptyMap(),
+): QueueUi {
     val now = clock.millis()
     val today = LocalDate.now(clock)
     val queued = entries.filter { it.state != EntryState.DRAFT }
@@ -100,7 +107,7 @@ fun queueUi(entries: List<Entry>, settings: Settings, clock: Clock, onUnmeteredN
             QueueRow(
                 id = entry.id,
                 time = listOfNotNull(day?.takeIf { it != today }?.let(OTHER_DAY::format), entry.time).joinToString(" · "),
-                text = entry.text.trim().replace(Regex("\\s+"), " "),
+                text = withPhotos(photoCounts[entry.id] ?: 0, entry.text.trim().replace(Regex("\\s+"), " ")),
                 status = when {
                     entry.state == EntryState.GRACE -> "In its grace window"
                     entry.state == EntryState.FAILED -> "Failed"
