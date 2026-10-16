@@ -17,6 +17,7 @@ import io.github.leoalfaroc.journal.data.Queue
 import io.github.leoalfaroc.journal.data.SettingsStore
 import io.github.leoalfaroc.journal.data.SiteStatus
 import io.github.leoalfaroc.journal.data.memoryDb
+import io.github.leoalfaroc.journal.location.FakeLocationSource
 import io.github.leoalfaroc.journal.net.HttpJournalApi
 import io.github.leoalfaroc.journal.net.JournalApi
 import io.github.leoalfaroc.journal.net.journalHttpClient
@@ -50,6 +51,7 @@ class TestWorld(folder: File) {
     private var ids = 0
 
     val photoFiles = PhotoFiles(File(folder, "photos"))
+    val location = FakeLocationSource()
     val queue = Queue(db, clock, photoFiles) { "id-${++ids}" }
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, box)
@@ -90,6 +92,7 @@ class TestWorld(folder: File) {
                 galleryFailure?.let { throw it }
                 galleryCopies += photo.name
             },
+            location = location,
             scheduler = scheduler,
             sender = sender,
             apiFor = apiFor,
