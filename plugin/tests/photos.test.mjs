@@ -106,7 +106,7 @@ test( 'an upload waits its turn while the same photo id is being stored', async 
 
 		const blocked = await uploadPhoto( { id } );
 		assert.equal( blocked.status, 503 );
-		assert.equal( blocked.body.code, 'journal_busy' );
+		assert.equal( blocked.body.code, 'jot2press_busy' );
 
 		await released;
 		const retried = await uploadPhoto( { id } );
@@ -129,7 +129,7 @@ test( 'the same photo sent twice at once is stored once', async () => {
 test( 'a request without a file or with a bad id is rejected', async () => {
 	const noFile = new FormData();
 	noFile.set( 'id', uuid() );
-	const missing = await api( 'POST', '/journal/v1/photos', { form: noFile } );
+	const missing = await api( 'POST', '/jot2press/v1/photos', { form: noFile } );
 	assert.equal( missing.status, 400 );
 	assert.equal( missing.body.code, 'missing_photo' );
 
@@ -146,7 +146,7 @@ test( 'a request without a file or with a bad id is rejected', async () => {
 		fixture( 'photo.jpg' ),
 		Buffer.from( `\r\n--${ boundary }--\r\n` ),
 	] );
-	const response = await fetch( `${ BASE }/?rest_route=/journal/v1/photos`, {
+	const response = await fetch( `${ BASE }/?rest_route=/jot2press/v1/photos`, {
 		method: 'POST',
 		headers: { ...authHeader(), 'Content-Type': `multipart/form-data; boundary=${ boundary }` },
 		body,
@@ -164,7 +164,7 @@ test( 'a photo over the server\'s upload limit is answered 413 and can be sent a
 	];
 	for ( const [ label, limits ] of cases ) {
 		const { limit, answer } = await withUploadLimits( limits, async () => ( {
-			limit: ( await api( 'GET', '/journal/v1/status' ) ).body.max_upload_bytes,
+			limit: ( await api( 'GET', '/jot2press/v1/status' ) ).body.max_upload_bytes,
 			answer: await uploadPhoto( { id, file: 'photo-large.jpg' } ),
 		} ) );
 		assert.equal( limit, 16 * 1024, label );
@@ -218,7 +218,7 @@ test( 'a photo the server cannot store is answered as a server failure', async (
 		file_put_contents( $tmp, base64_decode( '${ bytes }' ) );
 		$_FILES['photo'] = array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => $tmp, 'error' => 0, 'size' => filesize( $tmp ) );
 		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
-		$request = new WP_REST_Request( 'POST', '/journal/v1/photos' );
+		$request = new WP_REST_Request( 'POST', '/jot2press/v1/photos' );
 		$request->set_body_params( array( 'id' => '${ uuid() }' ) );
 		$request->set_file_params( $_FILES );
 		$response = rest_do_request( $request );
@@ -228,7 +228,7 @@ test( 'a photo the server cannot store is answered as a server failure', async (
 	const output = wp( 'eval', php );
 	const [ status, body ] = JSON.parse( output.match( /RESULT:(.*):END/s )[ 1 ] );
 	assert.equal( status, 500 );
-	assert.equal( body.code, 'journal_failure' );
+	assert.equal( body.code, 'jot2press_failure' );
 	assert.equal( body.message, 'The photo could not be stored.' );
 } );
 
@@ -245,10 +245,10 @@ test( 'each photo gets its own random slug, not one derived from a title', async
 	assert.notEqual( slugs[ 0 ], slugs[ 1 ] );
 } );
 
-test( 'lock names are 40 characters whatever the table prefix, and differ between installs', () => {
+test( 'lock names are 42 characters whatever the table prefix, and differ between installs', () => {
 	const output = wp(
 		'eval',
-		`global $wpdb; $a = journal_entries_lock_name( "2026-01-01" ); $b = journal_entries_lock_name( "2026-01-02" ); $old = $wpdb->prefix; $wpdb->prefix = str_repeat( "x", 60 ) . "_"; $long = journal_entries_lock_name( "2026-01-01" ); $wpdb->prefix = $old; echo "RESULT:" . wp_json_encode( array( strlen( $a ), strlen( $long ), $a === $long, $a === $b ) );`
+		`global $wpdb; $a = jot2press_lock_name( "2026-01-01" ); $b = jot2press_lock_name( "2026-01-02" ); $old = $wpdb->prefix; $wpdb->prefix = str_repeat( "x", 60 ) . "_"; $long = jot2press_lock_name( "2026-01-01" ); $wpdb->prefix = $old; echo "RESULT:" . wp_json_encode( array( strlen( $a ), strlen( $long ), $a === $long, $a === $b ) );`
 	);
-	assert.deepEqual( JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] ), [ 40, 40, false, false ] );
+	assert.deepEqual( JSON.parse( output.match( /RESULT:(\[.*\])/ )[ 1 ] ), [ 42, 42, false, false ] );
 } );

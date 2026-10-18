@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { readNames, stampHeader, stampReadme } from '../apply-name.mjs';
 
-const pluginFile = new URL( '../journal-entries/journal-entries.php', import.meta.url );
+const pluginFile = new URL( '../jot2press/jot2press.php', import.meta.url );
 
 test( 'stampHeader replaces only the Plugin Name line', () => {
 	const source = '<?php\n/**\n * Plugin Name:       Old Name\n * Description:       Unchanged.\n */\n';

@@ -23,7 +23,7 @@ function tryWp( ...args ) {
 
 function applicationPassword( user ) {
 	tryWp( 'user', 'application-password', 'delete', user, '--all' );
-	const output = wp( 'user', 'application-password', 'create', user, 'journal-tests', '--porcelain' );
+	const output = wp( 'user', 'application-password', 'create', user, 'jot2press-tests', '--porcelain' );
 	const match = output.match( /^[A-Za-z0-9]{24}$/m );
 	if ( ! match ) {
 		throw new Error( `No application password found in:\n${ output }` );

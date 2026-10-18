@@ -4,7 +4,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const projectFile = new URL( '../project.json', import.meta.url );
-const pluginFile = new URL( './journal-entries/journal-entries.php', import.meta.url );
+const pluginFile = new URL( './jot2press/jot2press.php', import.meta.url );
 const readmeFile = new URL( './README.md', import.meta.url );
 
 /** A visible name is one line of 1 to 60 characters, with no outer spaces, that cannot close a PHP comment. */

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { api } from './helpers.mjs';
 
 test( 'status reports the user, the default category, the upload limit and the version', async () => {
-	const { status, body } = await api( 'GET', '/journal/v1/status' );
+	const { status, body } = await api( 'GET', '/jot2press/v1/status' );
 	assert.equal( status, 200 );
 	assert.equal( body.ok, true );
 	assert.equal( body.user, 'admin' );
@@ -13,7 +13,7 @@ test( 'status reports the user, the default category, the upload limit and the v
 } );
 
 test( 'status lists every category of the site by name, used or not', async () => {
-	const { body } = await api( 'GET', '/journal/v1/status' );
+	const { body } = await api( 'GET', '/jot2press/v1/status' );
 	// 'Tea & Cake' has no posts, and WordPress stores its name as 'Tea &amp; Cake'.
 	assert.deepEqual( body.categories, [
 		{ slug: 'journal', name: 'Journal' },
@@ -24,16 +24,22 @@ test( 'status lists every category of the site by name, used or not', async () =
 } );
 
 test( 'status rejects a request without credentials', async () => {
-	const { status } = await api( 'GET', '/journal/v1/status', { who: 'anonymous' } );
+	const { status } = await api( 'GET', '/jot2press/v1/status', { who: 'anonymous' } );
 	assert.equal( status, 401 );
 } );
 
 test( 'status rejects a wrong password', async () => {
-	const { status } = await api( 'GET', '/journal/v1/status', { who: 'wrong' } );
+	const { status } = await api( 'GET', '/jot2press/v1/status', { who: 'wrong' } );
 	assert.equal( status, 401 );
 } );
 
 test( 'status rejects a user who cannot publish posts', async () => {
-	const { status } = await api( 'GET', '/journal/v1/status', { who: 'reader' } );
+	const { status } = await api( 'GET', '/jot2press/v1/status', { who: 'reader' } );
 	assert.equal( status, 403 );
+} );
+
+test( 'the old address journal/v1 is not served', async () => {
+	const { status, body } = await api( 'GET', '/journal/v1/status' );
+	assert.equal( status, 404 );
+	assert.equal( body.code, 'rest_no_route' );
 } );

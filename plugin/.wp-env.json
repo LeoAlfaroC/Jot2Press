@@ -1,6 +1,6 @@
 {
   "core": null,
-  "plugins": [ "./journal-entries" ],
+  "plugins": [ "./jot2press" ],
   "port": 8888,
   "config": {
     "WP_ENVIRONMENT_TYPE": "local"

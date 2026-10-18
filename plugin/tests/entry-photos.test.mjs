@@ -209,7 +209,7 @@ test( 'an entry is not written when one of its photos cannot be attached', async
 			return 'attachment' === ( $postarr['post_type'] ?? '' ) ? true : $empty;
 		}, 10, 2 );
 		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
-		$request = new WP_REST_Request( 'POST', '/journal/v1/entries' );
+		$request = new WP_REST_Request( 'POST', '/jot2press/v1/entries' );
 		$request->set_body_params( json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) );
 		$response = rest_do_request( $request );
 		echo 'STATUS=' . $response->get_status() . "\\n";
@@ -217,7 +217,7 @@ test( 'an entry is not written when one of its photos cannot be attached', async
 	`;
 	const output = wp( 'eval', attempt );
 	assert.ok( output.includes( 'STATUS=500' ), output );
-	assert.ok( output.includes( 'CODE=journal_failure' ), output );
+	assert.ok( output.includes( 'CODE=jot2press_failure' ), output );
 	assert.equal( ( await readMedia( attachmentId ) ).post, null );
 	const posts = await api( 'GET', '/wp/v2/posts', { query: `&context=edit&status=any&slug=${ d }` } );
 	assert.ok( posts.body.every( ( post ) => ! post.content.raw.includes( fields.text ) ) );
@@ -322,9 +322,9 @@ test( 'a photo whose file is kept away from this server is not taken for a lost 
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 		$id = wp_insert_attachment( array( 'post_mime_type' => 'image/jpeg', 'post_status' => 'private' ), 'journal/2001/01/' . str_repeat( 'a', 32 ) . '.jpg' );
 		wp_update_attachment_metadata( $id, array( 'width' => 64, 'height' => 48, 'file' => 'journal/2001/01/' . str_repeat( 'a', 32 ) . '.jpg' ) );
-		$here = journal_entries_photo_is_usable( $id );
+		$here = jot2press_photo_is_usable( $id );
 		add_filter( 'wp_get_attachment_url', function ( $url ) { return str_replace( 'http://localhost:8888', 'https://media.example', $url ); } );
-		$away = journal_entries_photo_is_usable( $id );
+		$away = jot2press_photo_is_usable( $id );
 		wp_delete_attachment( $id, true );
 		echo 'RESULT:' . wp_json_encode( array( $here, $away ) );
 		`

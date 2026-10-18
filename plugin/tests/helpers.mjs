@@ -19,7 +19,7 @@ export function authHeader( who = 'admin' ) {
 }
 
 /**
- * Calls a REST route by its path, for example '/journal/v1/status'.
+ * Calls a REST route by its path, for example '/jot2press/v1/status'.
  * `json` sends a JSON body, `form` a FormData body, `query` is appended as '&a=b'.
  */
 export async function api( method, path, { json, form, who = 'admin', query = '' } = {} ) {
@@ -68,7 +68,7 @@ export function at( day, time, offset = '-05:00' ) {
 
 /** Posts an entry. `fields` is the JSON body; `options` are api() options such as { who }. */
 export function sendEntry( fields, options = {} ) {
-	return api( 'POST', '/journal/v1/entries', { json: fields, ...options } );
+	return api( 'POST', '/jot2press/v1/entries', { json: fields, ...options } );
 }
 
 /** Reads a post as its author sees it: raw title, raw content, status, slug, date, categories. */
@@ -93,7 +93,7 @@ export async function uploadPhoto( { id = uuid(), file = 'photo.jpg', name = fil
 	form.set( 'id', id );
 	const mime = type ?? MIME_TYPES[ name.split( '.' ).pop().toLowerCase() ] ?? 'application/octet-stream';
 	form.set( 'photo', new Blob( [ fixture( file ) ], { type: mime } ), name );
-	const { status, body } = await api( 'POST', '/journal/v1/photos', { form, who } );
+	const { status, body } = await api( 'POST', '/jot2press/v1/photos', { form, who } );
 	return { id, status, body };
 }
 
@@ -105,7 +105,7 @@ export async function readMedia( attachmentId ) {
 
 /** Asks the plugin for the name of the database lock that guards a day (YYYY-MM-DD) or a photo id. */
 export function lockName( name ) {
-	const output = wp( 'eval', `echo 'LOCK:' . journal_entries_lock_name( ${ JSON.stringify( name ) } ) . ':END';` );
+	const output = wp( 'eval', `echo 'LOCK:' . jot2press_lock_name( ${ JSON.stringify( name ) } ) . ':END';` );
 	return output.match( /LOCK:(.*):END/ )[ 1 ];
 }
 

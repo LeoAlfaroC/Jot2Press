@@ -82,7 +82,7 @@ test( 'an entry answers 503 while the day is locked and succeeds afterwards', as
 	const fields = { id: uuid(), written_at: at( d, '12:00:00' ), text: 'Waited.' };
 	const blocked = await sendEntry( fields );
 	assert.equal( blocked.status, 503 );
-	assert.equal( blocked.body.code, 'journal_busy' );
+	assert.equal( blocked.body.code, 'jot2press_busy' );
 
 	await released;
 	const retried = await sendEntry( fields );
@@ -101,7 +101,7 @@ test( 'an entry whose store failed after its text was written is not written aga
 			}
 		}, 10, 2 );
 		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
-		$request = new WP_REST_Request( 'POST', '/journal/v1/entries' );
+		$request = new WP_REST_Request( 'POST', '/jot2press/v1/entries' );
 		$request->set_body_params( json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) );
 		try {
 			rest_do_request( $request );

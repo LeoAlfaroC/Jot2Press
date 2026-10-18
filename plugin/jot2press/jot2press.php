@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:       Jot2Press
- * Description:       Appends short journal entries to one post per day, private by default. Server side of the journal capture app for Android.
+ * Description:       Appends short journal entries to one post per day, private by default. Server side of the capture app for Android.
  * Version:           1.0.0
  * Requires at least: 7.1
  * Requires PHP:      7.4
@@ -13,53 +13,53 @@ defined( 'ABSPATH' ) || exit;
 // The default category: a day's post is filed here when the request names no category, or one that does not exist.
 // Created on first use if missing.
 // To change it, define this constant in wp-config.php: an edit made here is lost when the plugin is updated.
-defined( 'JOURNAL_ENTRIES_CATEGORY_SLUG' ) || define( 'JOURNAL_ENTRIES_CATEGORY_SLUG', 'journal' );
+defined( 'JOT2PRESS_CATEGORY_SLUG' ) || define( 'JOT2PRESS_CATEGORY_SLUG', 'journal' );
 
-const JOURNAL_ENTRIES_VERSION   = '1.0.0';
-const JOURNAL_ENTRIES_NAMESPACE = 'journal/v1';
+const JOT2PRESS_VERSION   = '1.0.0';
+const JOT2PRESS_NAMESPACE = 'jot2press/v1';
 
 // How long a request waits for another request appending to the same day.
-const JOURNAL_ENTRIES_LOCK_SECONDS = 5;
+const JOT2PRESS_LOCK_SECONDS = 5;
 
 // The most photos one entry can show.
-const JOURNAL_ENTRIES_MAX_PHOTOS = 10;
+const JOT2PRESS_MAX_PHOTOS = 10;
 
 // The most revisions WordPress keeps of a day's post. Each entry leaves one, which is where to look for an entry
 // that an editor left open overwrote; a site that keeps fewer (or none) is respected.
-const JOURNAL_ENTRIES_REVISIONS = 30;
+const JOT2PRESS_REVISIONS = 30;
 
 // Journal photos that no post shows and that are attached to no post are deleted once they are older than this many
 // days. Only a whole number of days from 1 to 999999 turns the cleanup on: anything else, including 0, false, text
 // and a decimal such as 30.0, turns it off.
 // To change it, define this constant in wp-config.php.
-defined( 'JOURNAL_ENTRIES_ORPHAN_DAYS' ) || define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );
+defined( 'JOT2PRESS_ORPHAN_DAYS' ) || define( 'JOT2PRESS_ORPHAN_DAYS', 30 );
 
-register_activation_hook( __FILE__, 'journal_entries_category' );
-add_action( 'rest_api_init', 'journal_entries_register_routes' );
-register_deactivation_hook( __FILE__, 'journal_entries_deactivate' );
-add_action( 'init', 'journal_entries_schedule_cleanup' );
-add_action( 'journal_entries_cleanup', 'journal_entries_cleanup_orphans' );
-add_filter( 'wp_revisions_to_keep', 'journal_entries_revisions_to_keep', 10, 2 );
+register_activation_hook( __FILE__, 'jot2press_category' );
+add_action( 'rest_api_init', 'jot2press_register_routes' );
+register_deactivation_hook( __FILE__, 'jot2press_deactivate' );
+add_action( 'init', 'jot2press_schedule_cleanup' );
+add_action( 'jot2press_cleanup', 'jot2press_cleanup_orphans' );
+add_filter( 'wp_revisions_to_keep', 'jot2press_revisions_to_keep', 10, 2 );
 
-function journal_entries_error( string $code, string $message, int $status ): WP_Error {
+function jot2press_error( string $code, string $message, int $status ): WP_Error {
 	return new WP_Error( $code, $message, array( 'status' => $status ) );
 }
 
-/** Caps the revisions of a day's post (a post with a _journal_date) at JOURNAL_ENTRIES_REVISIONS. */
-function journal_entries_revisions_to_keep( $num, $post ) {
-	$unlimited_or_more = $num < 0 || $num > JOURNAL_ENTRIES_REVISIONS;
+/** Caps the revisions of a day's post (a post with a _journal_date) at JOT2PRESS_REVISIONS. */
+function jot2press_revisions_to_keep( $num, $post ) {
+	$unlimited_or_more = $num < 0 || $num > JOT2PRESS_REVISIONS;
 	if ( $unlimited_or_more && $post instanceof WP_Post && '' !== (string) get_post_meta( $post->ID, '_journal_date', true ) ) {
-		return JOURNAL_ENTRIES_REVISIONS;
+		return JOT2PRESS_REVISIONS;
 	}
 	return $num;
 }
 
 /** Whether a value is an id: a UUID of exactly 36 characters (wp_is_uuid() alone accepts a trailing line break). */
-function journal_entries_is_id( $value ): bool {
+function jot2press_is_id( $value ): bool {
 	return is_string( $value ) && 36 === strlen( $value ) && wp_is_uuid( $value );
 }
 
-function journal_entries_can_publish(): bool {
+function jot2press_can_publish(): bool {
 	return current_user_can( 'publish_posts' );
 }
 
@@ -68,52 +68,52 @@ function journal_entries_can_publish(): bool {
  *
  * @return WP_Term|WP_Error
  */
-function journal_entries_category() {
-	$term = get_term_by( 'slug', JOURNAL_ENTRIES_CATEGORY_SLUG, 'category' );
+function jot2press_category() {
+	$term = get_term_by( 'slug', JOT2PRESS_CATEGORY_SLUG, 'category' );
 	if ( $term instanceof WP_Term ) {
 		return $term;
 	}
-	$created = wp_insert_term( 'Journal', 'category', array( 'slug' => JOURNAL_ENTRIES_CATEGORY_SLUG ) );
+	$created = wp_insert_term( 'Journal', 'category', array( 'slug' => JOT2PRESS_CATEGORY_SLUG ) );
 	if ( is_wp_error( $created ) ) {
 		return $created;
 	}
 	return get_term( $created['term_id'], 'category' );
 }
 
-function journal_entries_register_routes(): void {
+function jot2press_register_routes(): void {
 	register_rest_route(
-		JOURNAL_ENTRIES_NAMESPACE,
+		JOT2PRESS_NAMESPACE,
 		'/status',
 		array(
 			'methods'             => WP_REST_Server::READABLE,
-			'callback'            => 'journal_entries_handle_status',
-			'permission_callback' => 'journal_entries_can_publish',
+			'callback'            => 'jot2press_handle_status',
+			'permission_callback' => 'jot2press_can_publish',
 		)
 	);
 
 	register_rest_route(
-		JOURNAL_ENTRIES_NAMESPACE,
+		JOT2PRESS_NAMESPACE,
 		'/entries',
 		array(
 			'methods'             => WP_REST_Server::CREATABLE,
-			'callback'            => 'journal_entries_handle_entry',
-			'permission_callback' => 'journal_entries_can_publish',
+			'callback'            => 'jot2press_handle_entry',
+			'permission_callback' => 'jot2press_can_publish',
 		)
 	);
 
 	register_rest_route(
-		JOURNAL_ENTRIES_NAMESPACE,
+		JOT2PRESS_NAMESPACE,
 		'/photos',
 		array(
 			'methods'             => WP_REST_Server::CREATABLE,
-			'callback'            => 'journal_entries_handle_photo',
-			'permission_callback' => 'journal_entries_can_publish',
+			'callback'            => 'jot2press_handle_photo',
+			'permission_callback' => 'jot2press_can_publish',
 		)
 	);
 }
 
 /** Describes a category the way the app shows it: its slug and its readable name. */
-function journal_entries_category_summary( WP_Term $term ): array {
+function jot2press_category_summary( WP_Term $term ): array {
 	return array(
 		'slug' => $term->slug,
 		// WordPress stores names with entities ("Tea &amp; Cake"); the app shows plain text.
@@ -122,7 +122,7 @@ function journal_entries_category_summary( WP_Term $term ): array {
 }
 
 /** Lists every category of the site, used or not, sorted by name. */
-function journal_entries_categories(): array {
+function jot2press_categories(): array {
 	$terms = get_terms(
 		array(
 			'taxonomy'   => 'category',
@@ -131,23 +131,23 @@ function journal_entries_categories(): array {
 			'order'      => 'ASC',
 		)
 	);
-	return is_wp_error( $terms ) ? array() : array_map( 'journal_entries_category_summary', array_values( $terms ) );
+	return is_wp_error( $terms ) ? array() : array_map( 'jot2press_category_summary', array_values( $terms ) );
 }
 
-function journal_entries_handle_status() {
+function jot2press_handle_status() {
 	// Asked for first, so that the default category exists before the categories are listed.
-	$category = journal_entries_category();
+	$category = jot2press_category();
 	if ( is_wp_error( $category ) ) {
-		return journal_entries_error( 'journal_failure', $category->get_error_message(), 500 );
+		return jot2press_error( 'jot2press_failure', $category->get_error_message(), 500 );
 	}
 	return new WP_REST_Response(
 		array(
 			'ok'               => true,
 			'user'             => wp_get_current_user()->user_login,
-			'category'         => journal_entries_category_summary( $category ),
-			'categories'       => journal_entries_categories(),
+			'category'         => jot2press_category_summary( $category ),
+			'categories'       => jot2press_categories(),
 			'max_upload_bytes' => (int) wp_max_upload_size(),
-			'version'          => JOURNAL_ENTRIES_VERSION,
+			'version'          => JOT2PRESS_VERSION,
 		),
 		200
 	);
@@ -158,7 +158,7 @@ function journal_entries_handle_status() {
  * The returned object keeps the offset it was written with, so formatting it gives
  * the wall-clock date and time of the phone.
  */
-function journal_entries_parse_written_at( $value ): ?DateTimeImmutable {
+function jot2press_parse_written_at( $value ): ?DateTimeImmutable {
 	if ( ! is_string( $value ) || ! preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/', $value ) ) {
 		return null;
 	}
@@ -176,7 +176,7 @@ function journal_entries_parse_written_at( $value ): ?DateTimeImmutable {
  *
  * @return array|null|WP_Error Floats under the keys lat and lng; null when the entry has no location.
  */
-function journal_entries_parse_location( $value ) {
+function jot2press_parse_location( $value ) {
 	if ( null === $value ) {
 		return null;
 	}
@@ -186,7 +186,7 @@ function journal_entries_parse_location( $value ) {
 	$ok = ( is_int( $lat ) || is_float( $lat ) ) && ( is_int( $lng ) || is_float( $lng ) )
 		&& abs( $lat ) <= 90 && abs( $lng ) <= 180;
 	if ( ! $ok ) {
-		return journal_entries_error( 'invalid_location', 'location must hold lat (-90 to 90) and lng (-180 to 180) as numbers.', 400 );
+		return jot2press_error( 'invalid_location', 'location must hold lat (-90 to 90) and lng (-180 to 180) as numbers.', 400 );
 	}
 	return array(
 		'lat' => (float) $lat,
@@ -199,33 +199,33 @@ function journal_entries_parse_location( $value ) {
  *
  * @return array|WP_Error Keys: id, written, day, text, title, category, post_status, location, photo_ids.
  */
-function journal_entries_validate_entry( WP_REST_Request $request ) {
+function jot2press_validate_entry( WP_REST_Request $request ) {
 	$id = $request->get_param( 'id' );
 	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! journal_entries_is_id( $id ) ) {
-		return journal_entries_error( 'invalid_id', 'id must be a UUID.', 400 );
+	if ( ! jot2press_is_id( $id ) ) {
+		return jot2press_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
-	$written = journal_entries_parse_written_at( $request->get_param( 'written_at' ) );
+	$written = jot2press_parse_written_at( $request->get_param( 'written_at' ) );
 	if ( null === $written ) {
-		return journal_entries_error( 'invalid_written_at', 'written_at must be an ISO 8601 date-time with a UTC offset.', 400 );
+		return jot2press_error( 'invalid_written_at', 'written_at must be an ISO 8601 date-time with a UTC offset.', 400 );
 	}
 
 	$text = $request->get_param( 'text' );
 	if ( null !== $text && ! is_string( $text ) ) {
-		return journal_entries_error( 'invalid_text', 'text must be a string.', 400 );
+		return jot2press_error( 'invalid_text', 'text must be a string.', 400 );
 	}
 	$text = trim( (string) $text );
 
 	$title = $request->get_param( 'title' );
 	if ( null !== $title && ( ! is_string( $title ) || mb_strlen( $title ) > 200 ) ) {
-		return journal_entries_error( 'invalid_title', 'title must be a string of at most 200 characters.', 400 );
+		return jot2press_error( 'invalid_title', 'title must be a string of at most 200 characters.', 400 );
 	}
 
 	// Whether the category exists is settled later, and only if this entry creates the day's post.
 	$category = $request->get_param( 'category' );
 	if ( null !== $category && ( ! is_string( $category ) || '' === trim( $category ) ) ) {
-		return journal_entries_error( 'invalid_category', 'category must be a category slug.', 400 );
+		return jot2press_error( 'invalid_category', 'category must be a category slug.', 400 );
 	}
 
 	$post_status = $request->get_param( 'post_status' );
@@ -233,10 +233,10 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 		$post_status = 'private';
 	}
 	if ( ! in_array( $post_status, array( 'private', 'draft', 'publish' ), true ) ) {
-		return journal_entries_error( 'invalid_post_status', 'post_status must be private, draft or publish.', 400 );
+		return jot2press_error( 'invalid_post_status', 'post_status must be private, draft or publish.', 400 );
 	}
 
-	$location = journal_entries_parse_location( $request->get_param( 'location' ) );
+	$location = jot2press_parse_location( $request->get_param( 'location' ) );
 	if ( is_wp_error( $location ) ) {
 		return $location;
 	}
@@ -244,21 +244,21 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
 	$photo_ids = $request->get_param( 'photo_ids' );
 	$photo_ids = null === $photo_ids ? array() : $photo_ids;
 	if ( ! is_array( $photo_ids ) ) {
-		return journal_entries_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
+		return jot2press_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
 	}
-	if ( count( $photo_ids ) > JOURNAL_ENTRIES_MAX_PHOTOS ) {
-		return journal_entries_error( 'too_many_photos', 'An entry can have at most 10 photos.', 400 );
+	if ( count( $photo_ids ) > JOT2PRESS_MAX_PHOTOS ) {
+		return jot2press_error( 'too_many_photos', 'An entry can have at most 10 photos.', 400 );
 	}
 	foreach ( $photo_ids as $index => $photo_id ) {
 		$photo_id = is_string( $photo_id ) ? strtolower( $photo_id ) : '';
-		if ( ! journal_entries_is_id( $photo_id ) ) {
-			return journal_entries_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
+		if ( ! jot2press_is_id( $photo_id ) ) {
+			return jot2press_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
 		}
 		$photo_ids[ $index ] = $photo_id;
 	}
 
 	if ( '' === $text && ! $photo_ids ) {
-		return journal_entries_error( 'empty_entry', 'An entry needs text or photos.', 400 );
+		return jot2press_error( 'empty_entry', 'An entry needs text or photos.', 400 );
 	}
 
 	return array(
@@ -278,7 +278,7 @@ function journal_entries_validate_entry( WP_REST_Request $request ) {
  * Returns the id of the current user's post for a day (YYYY-MM-DD), or 0. Trashed posts do not count, and neither
  * do other accounts' posts: each account keeps its own journal. (Entry ids are looked up site-wide, though.)
  */
-function journal_entries_find_day_post( string $day ): int {
+function jot2press_find_day_post( string $day ): int {
 	$ids = get_posts(
 		array(
 			'post_type'     => 'post',
@@ -303,7 +303,7 @@ function journal_entries_find_day_post( string $day ): int {
  *
  * @return array|WP_Error Keys: term (WP_Term) and fallback (true when the category asked for does not exist).
  */
-function journal_entries_pick_category( ?string $slug ) {
+function jot2press_pick_category( ?string $slug ) {
 	if ( null !== $slug ) {
 		$term = get_term_by( 'slug', $slug, 'category' );
 		if ( $term instanceof WP_Term ) {
@@ -314,7 +314,7 @@ function journal_entries_pick_category( ?string $slug ) {
 		}
 	}
 
-	$default = journal_entries_category();
+	$default = jot2press_category();
 	if ( is_wp_error( $default ) ) {
 		return $default;
 	}
@@ -329,7 +329,7 @@ function journal_entries_pick_category( ?string $slug ) {
  *
  * @return int|WP_Error
  */
-function journal_entries_create_day_post( string $day, DateTimeImmutable $written, ?string $title, string $status, WP_Term $category ) {
+function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?string $title, string $status, WP_Term $category ) {
 	$title = null === $title ? '' : sanitize_text_field( $title );
 	if ( '' === $title ) {
 		// DateTime::format() is never localised, so this stays in English on any site.
@@ -358,7 +358,7 @@ function journal_entries_create_day_post( string $day, DateTimeImmutable $writte
 }
 
 /** Builds the fragment that follows an entry's time: the coordinates and a Google Maps link. */
-function journal_entries_render_location( array $location ): string {
+function jot2press_render_location( array $location ): string {
 	// Five decimals is about one metre. Both values are numbers formatted here, so they need no escaping.
 	$lat = number_format( $location['lat'], 5, '.', '' );
 	$lng = number_format( $location['lng'], 5, '.', '' );
@@ -366,7 +366,7 @@ function journal_entries_render_location( array $location ): string {
 }
 
 /** The CSS class that carries an entry's id inside its own markup, so the id is saved together with the text. */
-function journal_entries_marker( string $id ): string {
+function jot2press_marker( string $id ): string {
 	return 'journal-entry-' . $id;
 }
 
@@ -375,10 +375,10 @@ function journal_entries_marker( string $id ): string {
  * The photos are square tiles three to a row, whatever their number, so that a lone photo is the size of any other
  * in the day's post; a tap opens the whole photo in WordPress's own viewer. The markup is what the block editor saves.
  */
-function journal_entries_render( string $id, DateTimeImmutable $written, string $text, ?array $location, array $attachment_ids ): string {
+function jot2press_render( string $id, DateTimeImmutable $written, string $text, ?array $location, array $attachment_ids ): string {
 	$line = '<strong>' . $written->format( 'H:i' ) . '</strong>';
 	if ( null !== $location ) {
-		$line .= journal_entries_render_location( $location );
+		$line .= jot2press_render_location( $location );
 	}
 	if ( '' !== $text ) {
 		// Not esc_html(), which leaves existing entities alone ("&amp;" would show as "&"). The brackets are escaped
@@ -387,7 +387,7 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
 		$safe  = str_replace( array( '[', ']' ), array( '&#91;', '&#93;' ), $safe );
 		$line .= ' — ' . str_replace( array( "\r\n", "\r", "\n" ), '<br>', $safe );
 	}
-	$marker = journal_entries_marker( $id );
+	$marker = jot2press_marker( $id );
 	$blocks = array( "<!-- wp:paragraph {\"className\":\"{$marker}\"} -->\n<p class=\"{$marker}\">{$line}</p>\n<!-- /wp:paragraph -->" );
 
 	if ( $attachment_ids ) {
@@ -414,7 +414,7 @@ function journal_entries_render( string $id, DateTimeImmutable $written, string 
  *
  * @return int|WP_Error
  */
-function journal_entries_append( int $post_id, string $markup ) {
+function jot2press_append( int $post_id, string $markup ) {
 	// Read the content from the database, not from a copy cached earlier in this request.
 	clean_post_cache( $post_id );
 	$content = rtrim( get_post( $post_id )->post_content );
@@ -439,14 +439,14 @@ function journal_entries_append( int $post_id, string $markup ) {
  *                               and the category it asked for does not exist; left untouched otherwise.
  * @return int|WP_Error The id of the day's post.
  */
-function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null ) {
-	$post_id = journal_entries_find_day_post( $entry['day'] );
+function jot2press_store_entry( array $entry, ?WP_Term &$fallback = null ) {
+	$post_id = jot2press_find_day_post( $entry['day'] );
 	if ( ! $post_id ) {
-		$picked = journal_entries_pick_category( $entry['category'] );
+		$picked = jot2press_pick_category( $entry['category'] );
 		if ( is_wp_error( $picked ) ) {
 			return $picked;
 		}
-		$post_id = journal_entries_create_day_post( $entry['day'], $entry['written'], $entry['title'], $entry['post_status'], $picked['term'] );
+		$post_id = jot2press_create_day_post( $entry['day'], $entry['written'], $entry['title'], $entry['post_status'], $picked['term'] );
 		if ( is_wp_error( $post_id ) ) {
 			return $post_id;
 		}
@@ -459,7 +459,7 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 	// deletes old photos attached to nothing that no post shows, so a post must never show a photo that is not attached.
 	foreach ( $entry['attachments'] as $attachment_id ) {
 		if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
-			return new WP_Error( 'journal_photo_missing', 'Photo ' . $attachment_id . ' has no image to show.' );
+			return new WP_Error( 'jot2press_photo_missing', 'Photo ' . $attachment_id . ' has no image to show.' );
 		}
 	}
 	foreach ( $entry['attachments'] as $attachment_id ) {
@@ -475,9 +475,9 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 		}
 	}
 
-	$result = journal_entries_append(
+	$result = jot2press_append(
 		$post_id,
-		journal_entries_render( $entry['id'], $entry['written'], $entry['text'], $entry['location'], $entry['attachments'] )
+		jot2press_render( $entry['id'], $entry['written'], $entry['text'], $entry['location'], $entry['attachments'] )
 	);
 	if ( is_wp_error( $result ) ) {
 		return $result;
@@ -489,63 +489,63 @@ function journal_entries_store_entry( array $entry, ?WP_Term &$fallback = null )
 }
 
 /** Builds the 201 answer. `$fallback` is the category used in place of one that does not exist, when that happened. */
-function journal_entries_created_response( int $post_id, ?WP_Term $fallback ): WP_REST_Response {
+function jot2press_created_response( int $post_id, ?WP_Term $fallback ): WP_REST_Response {
 	$body = array(
 		'status'  => 'created',
 		'post_id' => $post_id,
 	);
 	if ( null !== $fallback ) {
-		$body['category_fallback'] = journal_entries_category_summary( $fallback );
+		$body['category_fallback'] = jot2press_category_summary( $fallback );
 	}
 	return new WP_REST_Response( $body, 201 );
 }
 
-function journal_entries_handle_entry( WP_REST_Request $request ) {
-	$entry = journal_entries_validate_entry( $request );
+function jot2press_handle_entry( WP_REST_Request $request ) {
+	$entry = jot2press_validate_entry( $request );
 	if ( is_wp_error( $entry ) ) {
 		return $entry;
 	}
 
-	$existing = journal_entries_find_entry_post( $entry['id'] );
+	$existing = jot2press_find_entry_post( $entry['id'] );
 	if ( $existing ) {
-		return journal_entries_duplicate_response( $existing );
+		return jot2press_duplicate_response( $existing );
 	}
 
-	if ( ! journal_entries_lock( $entry['day'] ) ) {
-		return journal_entries_error( 'journal_busy', 'Another entry for this day is being stored. Try again.', 503 );
+	if ( ! jot2press_lock( $entry['day'] ) ) {
+		return jot2press_error( 'jot2press_busy', 'Another entry for this day is being stored. Try again.', 503 );
 	}
 	$fallback = null;
 	try {
 		// The same entry may have been stored by another request while this one waited for the lock.
-		$existing = journal_entries_find_entry_post( $entry['id'] );
+		$existing = jot2press_find_entry_post( $entry['id'] );
 		if ( ! $existing ) {
 			// Or its text may have been written by a store that failed before the id row was.
-			$existing = journal_entries_recover_entry( $entry );
+			$existing = jot2press_recover_entry( $entry );
 		}
 		if ( $existing ) {
-			return journal_entries_duplicate_response( $existing );
+			return jot2press_duplicate_response( $existing );
 		}
 		// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
 		// the photos are looked up and attached with nothing but this request's own code in between.
-		$attachments = journal_entries_resolve_photos( $entry['photo_ids'] );
+		$attachments = jot2press_resolve_photos( $entry['photo_ids'] );
 		if ( is_wp_error( $attachments ) ) {
 			return $attachments;
 		}
 		$entry['attachments'] = $attachments;
-		$post_id              = journal_entries_store_entry( $entry, $fallback );
+		$post_id              = jot2press_store_entry( $entry, $fallback );
 	} finally {
-		journal_entries_unlock( $entry['day'] );
+		jot2press_unlock( $entry['day'] );
 	}
 
 	if ( is_wp_error( $post_id ) ) {
-		return journal_entries_error( 'journal_failure', $post_id->get_error_message(), 500 );
+		return jot2press_error( 'jot2press_failure', $post_id->get_error_message(), 500 );
 	}
 
-	return journal_entries_created_response( $post_id, $fallback );
+	return jot2press_created_response( $post_id, $fallback );
 }
 
 /** Returns the id of the post an entry was stored in, or 0 if it never was. */
-function journal_entries_find_entry_post( string $id ): int {
+function jot2press_find_entry_post( string $id ): int {
 	$ids = get_posts(
 		array(
 			'post_type'     => 'post',
@@ -562,29 +562,29 @@ function journal_entries_find_entry_post( string $id ): int {
 }
 
 /**
- * The name of the database lock for a day or a photo id. Hashed so that it is 40 characters whatever the table
+ * The name of the database lock for a day or a photo id. Hashed so that it is 42 characters whatever the table
  * prefix (MySQL refuses names over 64), and so that two installs on one database server do not share locks.
  */
-function journal_entries_lock_name( string $name ): string {
+function jot2press_lock_name( string $name ): string {
 	global $wpdb;
-	return 'journal_' . md5( DB_NAME . $wpdb->prefix . $name );
+	return 'jot2press_' . md5( DB_NAME . $wpdb->prefix . $name );
 }
 
 /** Takes the database lock for a day or a photo id. Returns false if another request holds it for too long. */
-function journal_entries_lock( string $name ): bool {
+function jot2press_lock( string $name ): bool {
 	global $wpdb;
 	$taken = $wpdb->get_var(
-		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', journal_entries_lock_name( $name ), JOURNAL_ENTRIES_LOCK_SECONDS )
+		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', jot2press_lock_name( $name ), JOT2PRESS_LOCK_SECONDS )
 	);
 	return '1' === (string) $taken;
 }
 
-function journal_entries_unlock( string $name ): void {
+function jot2press_unlock( string $name ): void {
 	global $wpdb;
-	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', journal_entries_lock_name( $name ) ) );
+	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', jot2press_lock_name( $name ) ) );
 }
 
-function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
+function jot2press_duplicate_response( int $post_id ): WP_REST_Response {
 	return new WP_REST_Response(
 		array(
 			'status'  => 'duplicate',
@@ -594,7 +594,7 @@ function journal_entries_duplicate_response( int $post_id ): WP_REST_Response {
 	);
 }
 
-function journal_entries_photo_duplicate_response( int $attachment_id ): WP_REST_Response {
+function jot2press_photo_duplicate_response( int $attachment_id ): WP_REST_Response {
 	return new WP_REST_Response(
 		array(
 			'status'        => 'duplicate',
@@ -609,15 +609,15 @@ function journal_entries_photo_duplicate_response( int $attachment_id ): WP_REST
  * after the content write), records the id row, and returns the day post's id.
  * Returns 0 when the day's post does not hold this entry. Call it only while the day is locked.
  */
-function journal_entries_recover_entry( array $entry ): int {
-	$post_id = journal_entries_find_day_post( $entry['day'] );
+function jot2press_recover_entry( array $entry ): int {
+	$post_id = jot2press_find_day_post( $entry['day'] );
 	if ( ! $post_id ) {
 		return 0;
 	}
 	// Read the content from the database, not from a copy cached earlier in this request.
 	clean_post_cache( $post_id );
 	$post = get_post( $post_id );
-	if ( ! $post || false === strpos( $post->post_content, journal_entries_marker( $entry['id'] ) ) ) {
+	if ( ! $post || false === strpos( $post->post_content, jot2press_marker( $entry['id'] ) ) ) {
 		return 0;
 	}
 	add_post_meta( $post_id, '_journal_entry_id', $entry['id'] );
@@ -629,16 +629,16 @@ function journal_entries_recover_entry( array $entry ): int {
  *
  * @return int[]|WP_Error
  */
-function journal_entries_resolve_photos( array $photo_ids ) {
+function jot2press_resolve_photos( array $photo_ids ) {
 	$attachment_ids = array();
 	foreach ( $photo_ids as $photo_id ) {
-		$attachment_id = journal_entries_find_photo( $photo_id );
+		$attachment_id = jot2press_find_photo( $photo_id );
 		if ( ! $attachment_id ) {
-			return journal_entries_error( 'unknown_photo', 'Photo ' . $photo_id . ' has not been uploaded.', 400 );
+			return jot2press_error( 'unknown_photo', 'Photo ' . $photo_id . ' has not been uploaded.', 400 );
 		}
 		// Same code as a photo never uploaded, so the app's answer is the same: upload it again.
-		if ( ! journal_entries_photo_is_usable( $attachment_id ) ) {
-			return journal_entries_error( 'unknown_photo', 'Photo ' . $photo_id . ' is no longer on the server. Upload it again.', 400 );
+		if ( ! jot2press_photo_is_usable( $attachment_id ) ) {
+			return jot2press_error( 'unknown_photo', 'Photo ' . $photo_id . ' is no longer on the server. Upload it again.', 400 );
 		}
 		$attachment_ids[] = $attachment_id;
 	}
@@ -646,7 +646,7 @@ function journal_entries_resolve_photos( array $photo_ids ) {
 }
 
 /** Returns the attachment id of an uploaded journal photo, or 0 if the id is unknown. */
-function journal_entries_find_photo( string $id ): int {
+function jot2press_find_photo( string $id ): int {
 	$ids = get_posts(
 		array(
 			'post_type'     => 'attachment',
@@ -665,7 +665,7 @@ function journal_entries_find_photo( string $id ): int {
  * Whether a stored photo can still be shown: WordPress has an image for it and its file is where it should be.
  * A photo that fails this is replaced when it is uploaded again, and an entry naming it is refused until then.
  */
-function journal_entries_photo_is_usable( int $attachment_id ): bool {
+function jot2press_photo_is_usable( int $attachment_id ): bool {
 	if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
 		return false;
 	}
@@ -680,7 +680,7 @@ function journal_entries_photo_is_usable( int $attachment_id ): bool {
 }
 
 /** Sends journal photos to uploads/journal/YYYY/MM, apart from the blog's other media. */
-function journal_entries_upload_dir( array $dirs ): array {
+function jot2press_upload_dir( array $dirs ): array {
 	$subdir         = '/journal/' . current_time( 'Y/m' );
 	$dirs['subdir'] = $subdir;
 	$dirs['path']   = $dirs['basedir'] . $subdir;
@@ -689,12 +689,12 @@ function journal_entries_upload_dir( array $dirs ): array {
 }
 
 /** Replaces the uploaded filename with one that cannot be guessed. */
-function journal_entries_random_filename( string $dir, string $name, string $ext ): string {
+function jot2press_random_filename( string $dir, string $name, string $ext ): string {
 	return bin2hex( random_bytes( 16 ) ) . strtolower( $ext );
 }
 
 /** Puts an empty index.html in a journal folder and in each of its parents up to uploads/journal. */
-function journal_entries_protect_dirs( string $dir ): void {
+function jot2press_protect_dirs( string $dir ): void {
 	$root = trailingslashit( wp_get_upload_dir()['basedir'] ) . 'journal';
 	while ( 0 === strpos( $dir, $root ) ) {
 		$index = $dir . '/index.html';
@@ -708,33 +708,33 @@ function journal_entries_protect_dirs( string $dir ): void {
 	}
 }
 
-function journal_entries_handle_photo( WP_REST_Request $request ) {
+function jot2press_handle_photo( WP_REST_Request $request ) {
 	// A body larger than PHP's post_max_size arrives with no fields and no files at all.
 	if ( empty( $_POST ) && empty( $_FILES ) && (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 ) > 0 ) {
-		return journal_entries_error( 'photo_too_large', 'The upload exceeds the server limit.', 413 );
+		return jot2press_error( 'photo_too_large', 'The upload exceeds the server limit.', 413 );
 	}
 
 	$id = $request->get_param( 'id' );
 	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! journal_entries_is_id( $id ) ) {
-		return journal_entries_error( 'invalid_id', 'id must be a UUID.', 400 );
+	if ( ! jot2press_is_id( $id ) ) {
+		return jot2press_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
-	$existing = journal_entries_find_photo( $id );
-	if ( $existing && journal_entries_photo_is_usable( $existing ) ) {
-		return journal_entries_photo_duplicate_response( $existing );
+	$existing = jot2press_find_photo( $id );
+	if ( $existing && jot2press_photo_is_usable( $existing ) ) {
+		return jot2press_photo_duplicate_response( $existing );
 	}
 
 	$files = $request->get_file_params();
 	if ( empty( $files['photo'] ) ) {
-		return journal_entries_error( 'missing_photo', 'A photo file is required.', 400 );
+		return jot2press_error( 'missing_photo', 'A photo file is required.', 400 );
 	}
 	$upload_error = (int) $files['photo']['error'];
 	if ( UPLOAD_ERR_INI_SIZE === $upload_error || UPLOAD_ERR_FORM_SIZE === $upload_error ) {
-		return journal_entries_error( 'photo_too_large', 'The photo exceeds the server limit.', 413 );
+		return jot2press_error( 'photo_too_large', 'The photo exceeds the server limit.', 413 );
 	}
 	if ( UPLOAD_ERR_OK !== $upload_error ) {
-		return journal_entries_error( 'missing_photo', 'The photo did not arrive complete.', 400 );
+		return jot2press_error( 'missing_photo', 'The photo did not arrive complete.', 400 );
 	}
 
 	// The handler decides what is a photo from the file's own bytes, never from its name or claimed type.
@@ -745,31 +745,31 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 	);
 	$detected = wp_get_image_mime( $files['photo']['tmp_name'] );
 	if ( ! $detected || ! isset( $types[ $detected ] ) || ! in_array( $detected, get_allowed_mime_types(), true ) ) {
-		return journal_entries_error( 'invalid_photo', 'The file is not a JPEG, PNG or WebP photo.', 400 );
+		return jot2press_error( 'invalid_photo', 'The file is not a JPEG, PNG or WebP photo.', 400 );
 	}
 
 	require_once ABSPATH . 'wp-admin/includes/file.php';
 	require_once ABSPATH . 'wp-admin/includes/image.php';
 	require_once ABSPATH . 'wp-admin/includes/media.php';
 
-	if ( ! journal_entries_lock( $id ) ) {
-		return journal_entries_error( 'journal_busy', 'This photo is being stored. Try again.', 503 );
+	if ( ! jot2press_lock( $id ) ) {
+		return jot2press_error( 'jot2press_busy', 'This photo is being stored. Try again.', 503 );
 	}
 	try {
 		// The same photo may have been stored by another request while this one waited for the lock.
-		$existing = journal_entries_find_photo( $id );
-		if ( $existing && journal_entries_photo_is_usable( $existing ) ) {
-			return journal_entries_photo_duplicate_response( $existing );
+		$existing = jot2press_find_photo( $id );
+		if ( $existing && jot2press_photo_is_usable( $existing ) ) {
+			return jot2press_photo_duplicate_response( $existing );
 		}
 		// A stored photo that lost its file is replaced by this upload: answering "duplicate" would leave it broken for good.
 		if ( $existing && ! wp_delete_attachment( $existing, true ) ) {
-			return journal_entries_error( 'journal_failure', 'The photo could not be stored.', 500 );
+			return jot2press_error( 'jot2press_failure', 'The photo could not be stored.', 500 );
 		}
 
 		// The stored extension follows the detected type, whatever name the client sent.
 		$_FILES['photo']['name'] = 'photo.' . $types[ $detected ];
 
-		add_filter( 'upload_dir', 'journal_entries_upload_dir' );
+		add_filter( 'upload_dir', 'jot2press_upload_dir' );
 		try {
 			$attachment_id = media_handle_upload(
 				'photo',
@@ -790,22 +790,22 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 						'png'          => 'image/png',
 						'webp'         => 'image/webp',
 					),
-					'unique_filename_callback' => 'journal_entries_random_filename',
+					'unique_filename_callback' => 'jot2press_random_filename',
 				)
 			);
 		} finally {
-			remove_filter( 'upload_dir', 'journal_entries_upload_dir' );
+			remove_filter( 'upload_dir', 'jot2press_upload_dir' );
 		}
 	} finally {
-		journal_entries_unlock( $id );
+		jot2press_unlock( $id );
 	}
 
 	if ( is_wp_error( $attachment_id ) ) {
 		// The file was checked above, so what failed is the server's side of the store.
-		return journal_entries_error( 'journal_failure', 'The photo could not be stored.', 500 );
+		return jot2press_error( 'jot2press_failure', 'The photo could not be stored.', 500 );
 	}
 
-	journal_entries_protect_dirs( dirname( get_attached_file( $attachment_id ) ) );
+	jot2press_protect_dirs( dirname( get_attached_file( $attachment_id ) ) );
 
 	return new WP_REST_Response(
 		array(
@@ -816,14 +816,14 @@ function journal_entries_handle_photo( WP_REST_Request $request ) {
 	);
 }
 
-function journal_entries_schedule_cleanup(): void {
-	if ( ! wp_next_scheduled( 'journal_entries_cleanup' ) ) {
-		wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'journal_entries_cleanup' );
+function jot2press_schedule_cleanup(): void {
+	if ( ! wp_next_scheduled( 'jot2press_cleanup' ) ) {
+		wp_schedule_event( time() + DAY_IN_SECONDS, 'daily', 'jot2press_cleanup' );
 	}
 }
 
-function journal_entries_deactivate(): void {
-	wp_clear_scheduled_hook( 'journal_entries_cleanup' );
+function jot2press_deactivate(): void {
+	wp_clear_scheduled_hook( 'jot2press_cleanup' );
 }
 
 /**
@@ -832,7 +832,7 @@ function journal_entries_deactivate(): void {
  * featured image, or a classic [gallery] shortcode names it by its id. Every doubt counts as shown, so that the
  * photo is kept: a name that cannot be read, a query that fails.
  */
-function journal_entries_photo_is_shown( int $attachment_id ): bool {
+function jot2press_photo_is_shown( int $attachment_id ): bool {
 	global $wpdb;
 	$file = get_attached_file( $attachment_id );
 	if ( ! $file || ! preg_match( '/^[0-9a-f]{32}/', basename( $file ), $stem ) ) {
@@ -879,13 +879,13 @@ function journal_entries_photo_is_shown( int $attachment_id ): bool {
 }
 
 /**
- * The number of days after which an unused photo is deleted: JOURNAL_ENTRIES_ORPHAN_DAYS (or the value given)
+ * The number of days after which an unused photo is deleted: JOT2PRESS_ORPHAN_DAYS (or the value given)
  * when it is a whole number from 1 to 999999, as an integer or a string of digits only. Anything else returns 0, which turns the
  * cleanup off: a value that is not understood must never shorten the time a photo is kept.
  *
  * @param mixed $value The value to judge.
  */
-function journal_entries_orphan_days( $value = JOURNAL_ENTRIES_ORPHAN_DAYS ): int {
+function jot2press_orphan_days( $value = JOT2PRESS_ORPHAN_DAYS ): int {
 	if ( is_string( $value ) && preg_match( '/^\d{1,6}$/', $value ) ) {
 		$value = (int) $value;
 	}
@@ -894,11 +894,11 @@ function journal_entries_orphan_days( $value = JOURNAL_ENTRIES_ORPHAN_DAYS ): in
 
 /**
  * Deletes journal photos that no post shows and that are attached to no post, once they are older than
- * JOURNAL_ENTRIES_ORPHAN_DAYS: uploads whose entry never arrived, and photos of a day's post that was
+ * JOT2PRESS_ORPHAN_DAYS: uploads whose entry never arrived, and photos of a day's post that was
  * deleted permanently. Old and unattached only makes a photo a candidate; it is deleted only if no post shows it.
  */
-function journal_entries_cleanup_orphans(): void {
-	$days = journal_entries_orphan_days();
+function jot2press_cleanup_orphans(): void {
+	$days = jot2press_orphan_days();
 	if ( ! $days ) {
 		return;
 	}
@@ -921,7 +921,7 @@ function journal_entries_cleanup_orphans(): void {
 		// Read again just before deleting: an entry may have attached or used the photo since the list was made.
 		clean_post_cache( $attachment_id );
 		$attachment = get_post( $attachment_id );
-		if ( ! $attachment || 0 !== (int) $attachment->post_parent || journal_entries_photo_is_shown( $attachment_id ) ) {
+		if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id ) ) {
 			continue;
 		}
 		wp_delete_attachment( $attachment_id, true );

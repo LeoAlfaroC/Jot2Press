@@ -22,7 +22,7 @@ function backdateDays( attachmentId, days ) {
 	);
 }
 
-const runCleanup = () => wp( 'cron', 'event', 'run', 'journal_entries_cleanup' );
+const runCleanup = () => wp( 'cron', 'event', 'run', 'jot2press_cleanup' );
 
 const mediaStatus = async ( attachmentId ) => ( await api( 'GET', `/wp/v2/media/${ attachmentId }` ) ).status;
 
@@ -67,8 +67,8 @@ test( 'cleanup never touches media that did not come through the journal', async
 test( 'cleanup is scheduled to run daily', () => {
 	const output = wp( 'cron', 'event', 'list', '--fields=hook,recurrence', '--format=json' );
 	const events = JSON.parse( output.slice( output.indexOf( '[' ), output.lastIndexOf( ']' ) + 1 ) );
-	const event = events.find( ( candidate ) => candidate.hook === 'journal_entries_cleanup' );
-	assert.ok( event, 'journal_entries_cleanup is not scheduled' );
+	const event = events.find( ( candidate ) => candidate.hook === 'jot2press_cleanup' );
+	assert.ok( event, 'jot2press_cleanup is not scheduled' );
 	assert.equal( event.recurrence, '1 day' );
 } );
 
@@ -126,7 +126,7 @@ test( "a photo that is a post's featured image is kept", async () => {
 test( 'the cleanup deletes nothing when the number of days is not a whole number of at least 1', () => {
 	const output = wp(
 		'eval',
-		`$out = array(); foreach ( array( 30, "30", 1, 999999, "999999", 0, -5, false, null, "", "off", 0.5, 30.5, 30.0, "30d", "7 weeks", 1000000, "1000000", 20270101000000, PHP_INT_MAX ) as $value ) { $out[] = journal_entries_orphan_days( $value ); } echo "RESULT:" . wp_json_encode( $out );`
+		`$out = array(); foreach ( array( 30, "30", 1, 999999, "999999", 0, -5, false, null, "", "off", 0.5, 30.5, 30.0, "30d", "7 weeks", 1000000, "1000000", 20270101000000, PHP_INT_MAX ) as $value ) { $out[] = jot2press_orphan_days( $value ); } echo "RESULT:" . wp_json_encode( $out );`
 	);
 	const result = JSON.parse( output.match( /RESULT:(\[.*?\])/ )[ 1 ] );
 	assert.deepEqual( result, [ 30, 30, 1, 999999, 999999, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ] );

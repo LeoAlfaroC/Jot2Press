@@ -427,7 +427,7 @@ test( 'a day post keeps at most 30 revisions and respects a site that keeps fewe
 		}
 		// The real thing: forty appends leave thirty revisions.
 		for ( $i = 0; $i < 40; $i++ ) {
-			journal_entries_append( $day_post, '<p>entry ' . $i . '</p>' );
+			jot2press_append( $day_post, '<p>entry ' . $i . '</p>' );
 		}
 		$results[] = count( wp_get_post_revisions( $day_post ) );
 		echo 'RESULT:' . wp_json_encode( $results );
