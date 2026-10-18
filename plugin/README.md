@@ -13,7 +13,7 @@ The plugin targets the current major version of WordPress and whatever that vers
 
 1. Build the zip: `cd plugin && npm run build`
 2. In WordPress: Plugins → Add New → Upload Plugin → choose `jot2press.zip` → Activate.
-3. In WordPress: Users → Profile → Application Passwords → add one for the journal app and copy it.
+3. In WordPress: Users → Profile → Application Passwords → add one for the app and copy it.
 
 Activation creates the default category, `journal`, if it does not exist.
 
@@ -22,13 +22,13 @@ Activation creates the default category, `journal`, if it does not exist.
 Two values can be changed by defining a constant in `wp-config.php`, above the line that says to stop editing:
 
 ```php
-define( 'JOURNAL_ENTRIES_CATEGORY_SLUG', 'journal' ); // default category of the day posts
-define( 'JOURNAL_ENTRIES_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted; anything but 1 to 999999 turns it off
+define( 'JOT2PRESS_CATEGORY_SLUG', 'journal' ); // default category of the day posts
+define( 'JOT2PRESS_ORPHAN_DAYS', 30 );          // days before a photo that no post shows is deleted; anything but 1 to 999999 turns it off
 ```
 
 Values set there survive plugin updates.
 
-Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOURNAL_ENTRIES_ORPHAN_DAYS` days (a whole number of days from 1 to 999999; anything else, including `0`, `false`, text and a decimal such as `30.0`, turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
+Once a day the site deletes journal photos that no post shows and that are attached to no post, when they are older than `JOT2PRESS_ORPHAN_DAYS` days (a whole number of days from 1 to 999999; anything else, including `0`, `false`, text and a decimal such as `30.0`, turns the cleanup off). That includes the photos of a day's post that was deleted permanently. Nothing else in the media library is touched.
 
 Each account that can publish keeps its own day posts: an entry is added to the post of the account that sent it, never to another account's post for the same day.
 
@@ -46,7 +46,17 @@ The category and the status of the day posts are chosen in the app, not here. Th
 
 The name shown in the WordPress plugin list is `pluginName` in `project.json`, at the root of the repository. To change it, edit that file, run `cd plugin && npm run build`, and upload the new zip over the installed plugin: WordPress treats it as an update, because the plugin's folder is the same.
 
-Only the visible name changes. The folder `journal-entries`, the address `journal/v1`, the uploads folder `journal` and the keys that mark the day posts and the photos stay as they are, which is why a rename loses nothing.
+Only the visible name changes. The folder `jot2press`, the address `jot2press/v1`, the uploads folder `journal` and the keys that mark the day posts and the photos stay as they are, which is why a rename loses nothing. The uploads folder and those keys carry the project's first name, journal, on purpose: the posts and photos already on a site are found by them.
+
+## Moving from the journal-entries plugin
+
+Before it was called Jot2Press, this plugin lived in the folder `journal-entries` and answered at `journal/v1`. The Jot2Press plugin installs beside it rather than over it, and the app talks only to the new one, so update the plugin and the app together:
+
+1. In the old app, wait until Settings → Queue says "Nothing is waiting to be sent."
+2. If `wp-config.php` defines `JOURNAL_ENTRIES_CATEGORY_SLUG` or `JOURNAL_ENTRIES_ORPHAN_DAYS`, rename them to `JOT2PRESS_CATEGORY_SLUG` and `JOT2PRESS_ORPHAN_DAYS`. The old names are no longer read, and the defaults (`journal`, 30 days) would apply without a warning.
+3. Upload `jot2press.zip` and activate it.
+4. Deactivate and delete the old plugin, the one in the folder `journal-entries`; it shows the same name in the list. Deleting it removes only its files: the day posts, their photos and the category stay, and the new plugin keeps appending to them.
+5. Install the new app, as the Android README describes under "Moving from the journal build".
 
 ## Upload limits
 
@@ -61,20 +71,20 @@ SITE=https://example.com
 AUTH='user:xxxx xxxx xxxx xxxx xxxx xxxx'
 
 # Credentials and upload limit
-curl -s -u "$AUTH" "$SITE/wp-json/journal/v1/status"
+curl -s -u "$AUTH" "$SITE/wp-json/jot2press/v1/status"
 
 # A text entry
-curl -s -u "$AUTH" -H 'Content-Type: application/json' "$SITE/wp-json/journal/v1/entries" \
+curl -s -u "$AUTH" -H 'Content-Type: application/json' "$SITE/wp-json/jot2press/v1/entries" \
   -d "{\"id\":\"$(uuidgen | tr A-Z a-z)\",\"written_at\":\"$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/')\",\"text\":\"Hello from curl.\"}"
 
 # A photo, then an entry that uses it
 PHOTO=$(uuidgen | tr A-Z a-z)
-curl -s -u "$AUTH" -F "id=$PHOTO" -F "photo=@/path/to/photo.jpg" "$SITE/wp-json/journal/v1/photos"
-curl -s -u "$AUTH" -H 'Content-Type: application/json' "$SITE/wp-json/journal/v1/entries" \
+curl -s -u "$AUTH" -F "id=$PHOTO" -F "photo=@/path/to/photo.jpg" "$SITE/wp-json/jot2press/v1/photos"
+curl -s -u "$AUTH" -H 'Content-Type: application/json' "$SITE/wp-json/jot2press/v1/entries" \
   -d "{\"id\":\"$(uuidgen | tr A-Z a-z)\",\"written_at\":\"$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\(..\)$/:\1/')\",\"photo_ids\":[\"$PHOTO\"]}"
 ```
 
-The `/wp-json/…` addresses need pretty permalinks. With plain permalinks the same route is `$SITE/?rest_route=/journal/v1/status`.
+The `/wp-json/…` addresses need pretty permalinks. With plain permalinks the same route is `$SITE/?rest_route=/jot2press/v1/status`.
 
 Then open today's post in Jetpack or the WordPress admin: it is private, in the Journal category, and shows both entries with their times.
 
@@ -84,9 +94,9 @@ To try another category or status, add `"category":"a-category-slug"` or `"post_
 
 | Route | Purpose |
 |---|---|
-| `GET /wp-json/journal/v1/status` | Confirms credentials; reports the upload limit, the default category and every category of the site |
-| `POST /wp-json/journal/v1/photos` | Uploads one photo (`multipart/form-data`: `id`, `photo`) |
-| `POST /wp-json/journal/v1/entries` | Appends an entry (JSON: `id`, `written_at`, `text`, `photo_ids`, `title`, `category`, `post_status`, `location`) |
+| `GET /wp-json/jot2press/v1/status` | Confirms credentials; reports the upload limit, the default category and every category of the site |
+| `POST /wp-json/jot2press/v1/photos` | Uploads one photo (`multipart/form-data`: `id`, `photo`) |
+| `POST /wp-json/jot2press/v1/entries` | Appends an entry (JSON: `id`, `written_at`, `text`, `photo_ids`, `title`, `category`, `post_status`, `location`) |
 
 Sending the same `id` again is safe: nothing is stored twice.
 
