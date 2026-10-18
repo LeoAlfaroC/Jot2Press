@@ -1,12 +1,18 @@
 package io.github.leoalfaroc.jot2press.capture
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasSetTextAction
@@ -23,6 +29,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.Trouble
 import io.github.leoalfaroc.jot2press.data.DraftPhoto
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
+import io.github.leoalfaroc.jot2press.ui.FakeHaptics
 import io.github.leoalfaroc.jot2press.ui.Jot2PressTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -56,8 +63,14 @@ class CaptureSheetTest {
     private val blank = CaptureUi(ready = true, day = LocalDate.of(2026, 10, 11))
     private val coffee = LastEntry(id = "id-1", time = "14:32", excerpt = "Coffee with Ana")
 
+    private val haptics = FakeHaptics()
+
     private fun show(ui: CaptureUi, now: Long = 0) {
-        compose.setContent { Jot2PressTheme { CaptureSheet(ui, actions, now = { now }) } }
+        compose.setContent {
+            Jot2PressTheme {
+                CompositionLocalProvider(LocalHapticFeedback provides haptics) { CaptureSheet(ui, actions, now = { now }) }
+            }
+        }
     }
 
     @Test
@@ -304,5 +317,52 @@ class CaptureSheetTest {
         compose.onNodeWithContentDescription("Choose photos").assertIsNotEnabled()
         compose.onNodeWithContentDescription("Attach location").assertIsEnabled().performClick()
         assertEquals(listOf("togglePin"), calls)
+    }
+
+    @Test
+    fun `Send with something to send confirms with one haptic`() {
+        show(blank.copy(text = "Coffee"))
+
+        compose.onNodeWithText("Send").performClick()
+
+        assertEquals(listOf(HapticFeedbackType.Confirm), haptics.performed)
+    }
+
+    @Test
+    fun `Send with nothing to send gives no haptic`() {
+        show(blank)
+
+        compose.onNodeWithText("Send").performClick()
+
+        assertEquals(emptyList<HapticFeedbackType>(), haptics.performed)
+    }
+
+    @Test
+    fun `Confirm delete on the last entry confirms with one haptic`() {
+        show(blank.copy(lastEntry = coffee.copy(confirmingDelete = true)))
+
+        compose.onNodeWithText("Confirm delete").performClick()
+
+        assertEquals(listOf(HapticFeedbackType.Confirm), haptics.performed)
+    }
+
+    @Test
+    fun `Confirm discard, Keep, the pin and the photo buttons give no haptic`() {
+        show(blank.copy(text = "Coffee", confirmingDiscard = true, showPin = true))
+
+        compose.onNodeWithText("Confirm discard").performClick()
+        compose.onNodeWithText("Keep").performClick()
+        compose.onNodeWithContentDescription("Attach location").performClick()
+        compose.onNodeWithContentDescription("Take photo").performClick()
+        compose.onNodeWithContentDescription("Choose photos").performClick()
+
+        assertEquals(emptyList<HapticFeedbackType>(), haptics.performed)
+    }
+
+    @Test
+    fun `a long reason stays on one line and leaves Review its full target`() {
+        show(blank.copy(trouble = Trouble.NotSent(2, "The site answered with an error page instead of the plugin's reply. ".repeat(6))))
+
+        compose.onNodeWithText("Review").assertIsDisplayed().assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
     }
 }

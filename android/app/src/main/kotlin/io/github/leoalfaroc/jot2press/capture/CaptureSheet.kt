@@ -1,13 +1,14 @@
 package io.github.leoalfaroc.jot2press.capture
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -17,68 +18,70 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.hideFromAccessibility
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.unit.sp
-import io.github.leoalfaroc.jot2press.Trouble
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.layout
-import androidx.compose.ui.res.painterResource
 import io.github.leoalfaroc.jot2press.R
+import io.github.leoalfaroc.jot2press.Trouble
 import io.github.leoalfaroc.jot2press.data.DraftPhoto
-import io.github.leoalfaroc.jot2press.ui.Alert
+import io.github.leoalfaroc.jot2press.ui.Badge
+import io.github.leoalfaroc.jot2press.ui.Button
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.jot2press.ui.Corner
+import io.github.leoalfaroc.jot2press.ui.IconButton
+import io.github.leoalfaroc.jot2press.ui.Jot2PressColors
 import io.github.leoalfaroc.jot2press.ui.Jot2PressType
 import io.github.leoalfaroc.jot2press.ui.LocalJot2PressColors
 import io.github.leoalfaroc.jot2press.ui.TextAction
@@ -142,7 +145,7 @@ fun CaptureScreen(
                     .align(Alignment.BottomCenter)
                     // Taps on the sheet itself must not fall through to the layer that closes the dialog.
                     .pointerInput(Unit) { detectTapGestures { } },
-                // The keyboard, or the navigation bar when the keyboard is closed: the sheet's white runs under them.
+                // The keyboard, or the navigation bar when the keyboard is closed: the sheet's paper runs under them.
                 insets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
                 loadThumbnail = loadThumbnail,
             )
@@ -160,6 +163,7 @@ fun CaptureSheet(
     loadThumbnail: suspend (DraftPhoto) -> ImageBitmap? = { null },
 ) {
     val colors = LocalJot2PressColors.current
+    val haptics = LocalHapticFeedback.current
     val current by rememberUpdatedState(actions)
     val confirmingDelete = ui.lastEntry?.confirmingDelete == true
 
@@ -178,11 +182,11 @@ fun CaptureSheet(
     Column(
         modifier
             .fillMaxWidth()
-            .background(colors.paper, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            .sheetEdge(colors)
+            .background(colors.paper, SheetShape)
             .windowInsetsPadding(insets)
             .semantics { paneTitle = "New entry" }
-            // The notice and the line about the last entry bring their own height, so the sheet gives them less room above.
-            .padding(start = SHEET_PADDING, end = SHEET_PADDING, top = if (ui.trouble != null || ui.lastEntry != null) 6.dp else 16.dp, bottom = 16.dp),
+            .padding(horizontal = SHEET_PADDING, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ui.trouble?.let { Notice(it, actions) }
@@ -191,16 +195,48 @@ fun CaptureSheet(
         Editor(ui, actions)
         if (ui.photos.isNotEmpty()) PhotoRow(ui.photos, actions.removePhoto, loadThumbnail)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            PhotoButton(R.drawable.ic_camera, "Take photo", ui.canAddPhotos, actions.takePhoto)
-            PhotoButton(R.drawable.ic_photos, "Choose photos", ui.canAddPhotos, actions.choosePhotos)
+            IconButton(R.drawable.ic_camera, "Take photo", actions.takePhoto, enabled = ui.canAddPhotos)
+            IconButton(R.drawable.ic_photos, "Choose photos", actions.choosePhotos, enabled = ui.canAddPhotos)
             if (ui.showPin) PinButton(ui.pinOn, actions.togglePin)
-            SendButton(enabled = ui.canSend, onClick = actions.send, modifier = Modifier.padding(start = 8.dp).weight(1f))
+            // Disabled until there is something to send: then it is an outline, not a faded button.
+            Button(
+                "Send",
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    actions.send()
+                },
+                modifier = Modifier.padding(start = 8.dp).weight(1f),
+                enabled = ui.canSend,
+                filled = true,
+            )
         }
     }
 }
 
+/** Light: a soft shadow above the sheet. Dark: a shadow would not show, so a faint line marks its top edge. */
+private fun Modifier.sheetEdge(colors: Jot2PressColors): Modifier =
+    if (!colors.dark) {
+        shadow(12.dp, SheetShape, clip = false, ambientColor = colors.text.copy(alpha = 0.12f), spotColor = colors.text.copy(alpha = 0.12f))
+    } else {
+        drawWithCache {
+            val stroke = 1.dp.toPx()
+            val inset = stroke / 2
+            val radius = SHEET_CORNER.toPx()
+            val edge = Path().apply {
+                moveTo(inset, radius)
+                arcTo(Rect(inset, inset, 2 * radius - inset, 2 * radius - inset), 180f, 90f, false)
+                lineTo(size.width - radius, inset)
+                arcTo(Rect(size.width - 2 * radius + inset, inset, size.width - inset, 2 * radius - inset), 270f, 90f, false)
+            }
+            onDrawWithContent {
+                drawContent()
+                drawPath(edge, Color.White.copy(alpha = 0.1f), style = Stroke(stroke))
+            }
+        }
+    }
+
 /**
- * What the user has to fix, first in the sheet, with the widget badge's red mark and the way to fix it.
+ * What the person has to fix, first in the sheet, with the widget badge's mark and the way to fix it.
  * It does not stop writing: what is sent waits on the phone.
  */
 @Composable
@@ -212,42 +248,37 @@ private fun Notice(trouble: Trouble, actions: CaptureActions) {
     }
     Column {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                Modifier
-                    .semantics { hideFromAccessibility() }
-                    .heightIn(min = 22.dp)
-                    .widthIn(min = 22.dp)
-                    .clip(MarkShape)
-                    .background(Alert)
-                    .border(2.dp, colors.paper, MarkShape)
-                    .padding(horizontal = 5.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(trouble.mark, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, lineHeight = 11.sp)
-            }
+            Badge(trouble.mark)
             // Read out when the dialog opens, and again when it changes.
-            Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Column(Modifier.weight(1f).semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(headline, style = Jot2PressType.label, color = colors.danger)
-                reason?.let { Text(it, style = Jot2PressType.label.copy(fontWeight = FontWeight.Normal), color = colors.quiet, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                reason?.let { Text(it, style = Jot2PressType.note, color = colors.quiet, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
             when (trouble) {
                 Trouble.SignInRejected -> TextAction("Fix", actions.fix, flush = Alignment.End)
                 is Trouble.NotSent -> TextAction("Review", actions.review, flush = Alignment.End)
             }
         }
-        HorizontalDivider(color = colors.quiet.copy(alpha = 0.4f))
+        HorizontalDivider(color = colors.line)
     }
 }
-
-private val MarkShape = RoundedCornerShape(11.dp)
 
 /** One plain line, above the day so that it cannot be read as the title of the entry being written. */
 @Composable
 private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureActions) {
     val colors = LocalJot2PressColors.current
+    val haptics = LocalHapticFeedback.current
     if (last.confirmingDelete) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextAction("Confirm delete", actions.confirmDeleteLast, danger = true, flush = Alignment.Start)
+            TextAction(
+                "Confirm delete",
+                {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    actions.confirmDeleteLast()
+                },
+                danger = true,
+                flush = Alignment.Start,
+            )
             TextAction("Keep", actions.keep, flush = Alignment.End)
         }
         return
@@ -255,9 +286,7 @@ private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureAct
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             buildAnnotatedString {
-                withStyle(SpanStyle(color = colors.ink, fontSize = Jot2PressType.label.fontSize, fontWeight = FontWeight.Medium)) {
-                    append(last.time)
-                }
+                withStyle(Jot2PressType.label.toSpanStyle().copy(color = colors.ink)) { append(last.time) }
                 append("  ")
                 append(last.excerpt)
             },
@@ -276,7 +305,6 @@ private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureAct
 /** The day the entry will be added to, with `Discard`; or, after `Discard`, the confirmation on the opposite side. */
 @Composable
 private fun Header(ui: CaptureUi, actions: CaptureActions) {
-    val colors = LocalJot2PressColors.current
     FlowRow(
         Modifier.fillMaxWidth().heightIn(min = 56.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -346,41 +374,9 @@ private fun Editor(ui: CaptureUi, actions: CaptureActions) {
     )
 }
 
-/** The only filled control. Disabled, it is an outline, not a faded button. */
-@Composable
-private fun SendButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = LocalJot2PressColors.current
-    Box(
-        modifier
-            .heightIn(min = 52.dp)
-            .clip(Corner)
-            .then(if (enabled) Modifier.background(colors.ink) else Modifier.border(2.dp, colors.ink, Corner))
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Send", style = Jot2PressType.button, color = if (enabled) colors.onInk else colors.ink)
-    }
-}
-
-/** An icon without a border. At 10 photos it turns the quiet grey and stops answering. */
-@Composable
-private fun PhotoButton(@DrawableRes icon: Int, label: String, enabled: Boolean, onClick: () -> Unit) {
-    val colors = LocalJot2PressColors.current
-    Box(
-        Modifier
-            .size(48.dp)
-            .clip(Corner)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Image(painterResource(icon), contentDescription = null, colorFilter = ColorFilter.tint(if (enabled) colors.ink else colors.quiet))
-    }
-}
-
 /**
  * Whether this entry sends where it was written. Its states differ in shape, not in colour:
- * grey is for a control that cannot be used, and the pin always can.
+ * quiet is for a control that cannot be used, and the pin always can.
  */
 @Composable
 private fun PinButton(on: Boolean, toggle: () -> Unit) {
@@ -393,11 +389,7 @@ private fun PinButton(on: Boolean, toggle: () -> Unit) {
             .semantics { contentDescription = "Attach location" },
         contentAlignment = Alignment.Center,
     ) {
-        Image(
-            painterResource(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin_off),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(colors.ink),
-        )
+        Icon(painterResource(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin_off), contentDescription = null, Modifier.size(24.dp), tint = colors.ink)
     }
 }
 
@@ -426,7 +418,7 @@ private fun PhotoRow(photos: List<DraftPhoto>, remove: (String) -> Unit, loadThu
 @Composable
 private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (String) -> Unit, load: suspend (DraftPhoto) -> ImageBitmap?) {
     val colors = LocalJot2PressColors.current
-    // Decoding blocks, so it runs off the main thread; a loader that fails leaves the grey square instead of crashing the sheet.
+    // Decoding blocks, so it runs off the main thread; a loader that fails leaves the washed square instead of crashing the sheet.
     val image by produceState<ImageBitmap?>(null, photo.id) {
         value = try {
             withContext(Dispatchers.IO) { load(photo) }
@@ -440,7 +432,7 @@ private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (Strin
         Modifier
             .size(72.dp)
             .clip(ThumbnailShape)
-            .background(colors.quiet.copy(alpha = 0.2f))
+            .background(colors.wash)
             .semantics { contentDescription = "Photo $number of $total" },
     ) {
         image?.let { Image(it, contentDescription = null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
@@ -457,11 +449,13 @@ private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (Strin
                 Modifier.padding(4.dp).size(22.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.62f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Image(painterResource(R.drawable.ic_close), contentDescription = null)
+                Icon(painterResource(R.drawable.ic_close), contentDescription = null, Modifier.size(14.dp), tint = Color.White)
             }
         }
     }
 }
 
+private val SHEET_CORNER = 26.dp
+private val SheetShape = RoundedCornerShape(topStart = SHEET_CORNER, topEnd = SHEET_CORNER)
 private val ThumbnailShape = RoundedCornerShape(8.dp)
 private val SHEET_PADDING = 20.dp
