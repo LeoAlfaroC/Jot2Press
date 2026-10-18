@@ -6,14 +6,20 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// The name a person sees lives in project.json at the repository root; nothing in the app spells it out.
-val appName: String = providers.fileContents(rootProject.layout.projectDirectory.file("../project.json"))
-    .asText
-    .map { (JsonSlurper().parseText(it) as Map<*, *>)["appName"] as? String ?: "" }
-    .get()
-require(appName.isNotEmpty() && appName == appName.trim() && appName.length <= 60 && appName.none { it == '\n' || it == '\r' }) {
-    "project.json: appName must be one line of 1 to 60 characters with no outer spaces"
+// The names a person sees live in project.json at the repository root; nothing in the app spells them out.
+fun declaredName(key: String): String {
+    val name = providers.fileContents(rootProject.layout.projectDirectory.file("../project.json"))
+        .asText
+        .map { (JsonSlurper().parseText(it) as Map<*, *>)[key] as? String ?: "" }
+        .get()
+    require(name.isNotEmpty() && name == name.trim() && name.length <= 60 && name.none { it == '\n' || it == '\r' }) {
+        "project.json: $key must be one line of 1 to 60 characters with no outer spaces"
+    }
+    return name
 }
+
+val appName: String = declaredName("appName")
+val pluginName: String = declaredName("pluginName")
 
 android {
     // Permanent: Android recognises the installed app, its queue and its settings by this id.
@@ -33,9 +39,12 @@ android {
             "app_name",
             appName.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"").replace(Regex("^[@?]"), "\\\\$0"),
         )
+        // A Java string literal: a backslash or a quote has to be escaped.
+        buildConfigField("String", "PLUGIN_NAME", "\"" + pluginName.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
         resValues = true
     }

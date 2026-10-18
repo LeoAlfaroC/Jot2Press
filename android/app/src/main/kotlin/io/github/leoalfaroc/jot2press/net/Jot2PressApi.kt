@@ -1,5 +1,6 @@
 package io.github.leoalfaroc.jot2press.net
 
+import io.github.leoalfaroc.jot2press.BuildConfig
 import io.github.leoalfaroc.jot2press.data.Category
 import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.SiteStatus
@@ -207,7 +208,7 @@ class HttpJot2PressApi(private val client: OkHttpClient, private val credentials
     }
 
     companion object {
-        const val NOT_THE_PLUGIN = "The site answered, but not as the journal plugin does."
+        const val NOT_THE_PLUGIN = "The site answered, but not as the ${BuildConfig.PLUGIN_NAME} plugin does."
         const val TOO_LARGE = "The site refused the request as too large (HTTP 413)."
         private const val ROUTES = "/wp-json/jot2press/v1/"
         private const val MAX_ANSWER_BYTES = 256 * 1024L

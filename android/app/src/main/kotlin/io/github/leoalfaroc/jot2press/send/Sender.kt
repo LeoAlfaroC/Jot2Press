@@ -1,5 +1,6 @@
 package io.github.leoalfaroc.jot2press.send
 
+import io.github.leoalfaroc.jot2press.BuildConfig
 import io.github.leoalfaroc.jot2press.Titles
 import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.Entry
@@ -223,6 +224,6 @@ class Sender(
         if (refused.code == NO_ROUTE) PLUGIN_MISSING else refused.message
 
     companion object {
-        const val PLUGIN_MISSING = "The journal plugin does not answer on the site. Check that it is installed and active."
+        const val PLUGIN_MISSING = "The ${BuildConfig.PLUGIN_NAME} plugin does not answer on the site. Check that it is installed and active."
     }
 }
