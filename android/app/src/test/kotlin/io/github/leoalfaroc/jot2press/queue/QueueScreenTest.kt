@@ -1,5 +1,8 @@
 package io.github.leoalfaroc.jot2press.queue
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -7,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
+import io.github.leoalfaroc.jot2press.ui.FakeHaptics
 import io.github.leoalfaroc.jot2press.ui.Jot2PressTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -21,10 +25,14 @@ class QueueScreenTest {
     private val waiting = QueueRow("id-1", "14:20", "Walked back", "Waiting")
     private val failed = QueueRow("id-2", "13:05", "Too long", "Failed", detail = "The text is too long.", canRetry = true)
 
+    private val haptics = FakeHaptics()
+
     private fun show(ui: QueueUi) {
         compose.setContent {
             Jot2PressTheme {
-                QueueScreen(ui, onRetry = { calls += "retry:$it" }, onDelete = { calls += "delete:$it" }, onBack = { calls += "back" })
+                CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                    QueueScreen(ui, onRetry = { calls += "retry:$it" }, onDelete = { calls += "delete:$it" }, onBack = { calls += "back" })
+                }
             }
         }
     }
@@ -96,5 +104,26 @@ class QueueScreenTest {
 
         assertEquals(listOf("delete:id-2"), calls)
         compose.onNodeWithText("Confirm delete").assertDoesNotExist()
+    }
+
+    @Test
+    fun `Confirm delete confirms with one haptic`() {
+        show(QueueUi(rows = listOf(failed)))
+
+        compose.onNodeWithText("Delete").performClick()
+        compose.onNodeWithText("Confirm delete").performClick()
+
+        assertEquals(listOf(HapticFeedbackType.Confirm), haptics.performed)
+    }
+
+    @Test
+    fun `Retry, Delete and Keep give no haptic`() {
+        show(QueueUi(rows = listOf(failed)))
+
+        compose.onNodeWithText("Retry").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.onNodeWithText("Keep").performClick()
+
+        assertEquals(emptyList<HapticFeedbackType>(), haptics.performed)
     }
 }
