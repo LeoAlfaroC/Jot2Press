@@ -80,7 +80,7 @@ fun Field(
         },
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
-        textStyle = Jot2PressType.body.copy(color = colors.text),
+        textStyle = Jot2PressType.body.copy(color = if (enabled) colors.text else colors.quiet),
         cursorBrush = SolidColor(colors.ink),
         visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = keyboard),

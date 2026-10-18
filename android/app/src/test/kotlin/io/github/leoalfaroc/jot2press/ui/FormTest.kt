@@ -1,6 +1,7 @@
 package io.github.leoalfaroc.jot2press.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -9,8 +10,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -26,9 +29,11 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -76,6 +81,25 @@ class FormTest {
             .assertIsNotEnabled()
         // What TalkBack reads is masked. Compose keeps the typed value in InputText as well, for autofill.
         compose.onNodeWithText("Application password").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("•".repeat(9))))
+    }
+
+    @Test
+    fun `a disabled field draws what it holds in the quiet colour`() {
+        show {
+            Column {
+                Field("Site URL", "example.com", 1, {}, enabled = false)
+                Field("Username", "leo", 1, {})
+            }
+        }
+
+        assertEquals(LightColors.quiet, valueColor("Site URL"))
+        assertEquals(LightColors.text, valueColor("Username"))
+    }
+
+    private fun valueColor(label: String): Color {
+        val layouts = mutableListOf<TextLayoutResult>()
+        compose.onNodeWithText(label).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+        return layouts.single().layoutInput.style.color
     }
 
     @Test
