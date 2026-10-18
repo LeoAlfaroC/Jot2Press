@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -52,7 +53,7 @@ class SettingsActivityTest {
     fun `settings is titled with the app's name, and the queue is one step in and one step back`() {
         world
         ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
-            appears(declaredAppName())
+            compose.waitUntil(TIMEOUT) { compose.onAllNodes(hasContentDescription(declaredAppName())).fetchSemanticsNodes().isNotEmpty() }
             appears("Empty")
 
             compose.onNodeWithText("Queue").performClick()

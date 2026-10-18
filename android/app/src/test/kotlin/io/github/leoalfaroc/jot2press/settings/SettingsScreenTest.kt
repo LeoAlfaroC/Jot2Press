@@ -1,17 +1,22 @@
 package io.github.leoalfaroc.jot2press.settings
 
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.leoalfaroc.jot2press.BuildConfig
+import io.github.leoalfaroc.jot2press.R
 import io.github.leoalfaroc.jot2press.TitleLanguage
 import io.github.leoalfaroc.jot2press.Titles
 import io.github.leoalfaroc.jot2press.data.Category
@@ -64,10 +69,11 @@ class SettingsScreenTest {
     }
 
     @Test
-    fun `it is titled with the app's name and starts with the queue row`() {
+    fun `the wordmark is named after the app, and the queue row comes first`() {
         show(fresh.copy(queueSummary = "1 failed, 2 waiting"))
 
-        compose.onNodeWithText("The App").assertExists()
+        compose.onNodeWithContentDescription("The App").assertExists()
+        compose.onNodeWithText("The App").assertDoesNotExist()
         compose.onNodeWithText("1 failed, 2 waiting").assertExists()
         compose.onNodeWithText("Queue").performClick()
         assertEquals(listOf("openQueue"), calls)
@@ -80,7 +86,7 @@ class SettingsScreenTest {
         compose.onNodeWithText("Site URL").performTextReplacement("example.com")
         compose.onNodeWithText("Username").performTextReplacement("leo")
         compose.onNodeWithText("Application password").performTextReplacement("abcd")
-        compose.onNodeWithText("Save").assertIsEnabled().performClick()
+        compose.onNodeWithText("Save").performScrollTo().assertIsEnabled().performClick()
         compose.onNodeWithText("Test connection").performScrollTo().assertIsEnabled().performClick()
 
         assertEquals(listOf("siteUrl:example.com", "username:leo", "password:abcd", "save", "testConnection"), calls)
@@ -112,8 +118,8 @@ class SettingsScreenTest {
         val save = compose.onNodeWithText("Save").getUnclippedBoundsInRoot()
         val test = compose.onNodeWithText("Test connection").getUnclippedBoundsInRoot()
         assertTrue(save.bottom <= test.top)
-        compose.onNodeWithText("Cancel").performClick()
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Cancel").performScrollTo().performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
 
         assertEquals(listOf("cancel", "save"), calls)
     }
@@ -271,5 +277,29 @@ class SettingsScreenTest {
 
         compose.onNodeWithText(PUBLIC_LOCATION_LINE).performScrollTo().assertExists()
         compose.onNodeWithText(PUBLIC_LINE).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the version sits at the foot of the screen`() {
+        show(fresh)
+
+        val version = compose.onNodeWithText("Version ${BuildConfig.VERSION_NAME}").performScrollTo().assertIsDisplayed().getUnclippedBoundsInRoot()
+        val pattern = compose.onNodeWithText("Title pattern").getUnclippedBoundsInRoot()
+        assertTrue(pattern.bottom <= version.top)
+    }
+
+    @Test
+    fun `the wordmark follows the theme the screen is drawn in`() {
+        assertEquals(R.drawable.wordmark, wordmark(dark = false))
+        assertEquals(R.drawable.wordmark_dark, wordmark(dark = true))
+    }
+
+    @Test
+    fun `the post status pills say which one is chosen`() {
+        show(fresh)
+
+        compose.onNodeWithText("Private").assertIsSelected()
+        compose.onNodeWithText("Draft").assertIsNotSelected()
+        compose.onNodeWithText("Public").assertIsNotSelected()
     }
 }
