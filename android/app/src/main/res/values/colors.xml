@@ -3,9 +3,10 @@
     <!-- The window before Compose draws, and the widget: neither can read the Compose theme. These repeat LightColors in ui/Theme.kt. -->
     <color name="paper">#FFFFFF</color>
     <color name="ink">#0066FF</color>
-    <color name="widget_app">#14532D</color>
-    <color name="widget_on_app">#FFFFFF</color>
-    <color name="widget_sheet">#FFFFFF</color>
+    <!-- The widget's tile, its pen and the ring round its badge. onInk is paper in both themes. -->
+    <color name="widget_ink">@color/ink</color>
+    <color name="widget_on_ink">@color/paper</color>
+    <color name="widget_paper">@color/paper</color>
     <!-- The launcher icon's page: white in both themes. -->
     <color name="icon_page">#FFFFFF</color>
 </resources>

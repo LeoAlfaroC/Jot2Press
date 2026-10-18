@@ -3,9 +3,12 @@ package io.github.leoalfaroc.jot2press.widget
 import android.app.Application
 import android.content.ComponentName
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Rect
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.R
@@ -149,5 +152,27 @@ class Jot2PressWidgetTest {
         val receiver = packages.getReceiverInfo(ComponentName(world.context, Jot2PressWidgetReceiver::class.java), 0)
 
         assertEquals(declaredAppName(), receiver.loadLabel(packages).toString())
+    }
+
+    @Test
+    fun `the tile is ink and the pen paper, in the light and in the dark`() {
+        val day = world.context
+        val night = day.createConfigurationContext(
+            Configuration(day.resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_YES
+            },
+        )
+
+        assertEquals(0xFF0066FF.toInt(), day.getColor(R.color.widget_ink))
+        assertEquals(0xFF7AB0FF.toInt(), night.getColor(R.color.widget_ink))
+        assertEquals(0xFFFFFFFF.toInt(), day.getColor(R.color.widget_on_ink))
+        assertEquals(0xFF101218.toInt(), night.getColor(R.color.widget_on_ink))
+        assertEquals(day.getColor(R.color.widget_on_ink), day.getColor(R.color.widget_paper))
+        assertEquals(night.getColor(R.color.widget_on_ink), night.getColor(R.color.widget_paper))
+
+        val widget = shown(WidgetState(configured = true))
+        val tile = (widget.write() as ImageView).drawable as GradientDrawable
+        assertEquals(day.getColor(R.color.widget_ink), tile.color!!.defaultColor)
+        assertEquals(day.getColor(R.color.widget_on_ink), widget.findViewById<ImageView>(R.id.pen).imageTintList!!.defaultColor)
     }
 }

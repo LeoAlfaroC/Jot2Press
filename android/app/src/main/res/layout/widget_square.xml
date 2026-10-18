@@ -25,13 +25,15 @@
 
         <!-- Centred on the button, which sits 6dp down and 6dp in from the end. -->
         <ImageView
+            android:id="@+id/pen"
             android:layout_width="22dp"
             android:layout_height="22dp"
             android:layout_gravity="center"
             android:layout_marginTop="3dp"
             android:layout_marginEnd="3dp"
             android:importantForAccessibility="no"
-            android:src="@drawable/ic_write" />
+            android:src="@drawable/ic_write"
+            android:tint="@color/widget_on_ink" />
 
         <TextView
             android:id="@+id/badge"
