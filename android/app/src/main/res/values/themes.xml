@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Journal" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Jot2Press" parent="android:Theme.Material.Light.NoActionBar" />
     <!-- The capture dialog: the home screen stays visible, dimmed, behind the sheet. Nothing animates. -->
-    <style name="Theme.Journal.Capture">
+    <style name="Theme.Jot2Press.Capture">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">true</item>

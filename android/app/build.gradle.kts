@@ -17,11 +17,11 @@ require(appName.isNotEmpty() && appName == appName.trim() && appName.length <= 6
 
 android {
     // Permanent: Android recognises the installed app, its queue and its settings by this id.
-    namespace = "io.github.leoalfaroc.journal"
+    namespace = "io.github.leoalfaroc.jot2press"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.leoalfaroc.journal"
+        applicationId = "io.github.leoalfaroc.jot2press"
         minSdk = 29
         targetSdk = 36
         versionCode = 1

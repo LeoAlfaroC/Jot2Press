@@ -9,14 +9,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <application
-        android:name=".JournalApp"
+        android:name=".Jot2PressApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Journal"
+        android:theme="@style/Theme.Jot2Press"
         android:usesCleartextTraffic="false">
 
         <activity
@@ -25,7 +25,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity=""
-            android:theme="@style/Theme.Journal.Capture"
+            android:theme="@style/Theme.Jot2Press.Capture"
             android:windowSoftInputMode="adjustResize|stateAlwaysVisible" />
 
         <activity
@@ -39,7 +39,7 @@
         </activity>
 
         <receiver
-            android:name=".widget.JournalWidgetReceiver"
+            android:name=".widget.Jot2PressWidgetReceiver"
             android:exported="true"
             android:label="@string/app_name">
             <intent-filter>
@@ -47,7 +47,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/journal_widget_info" />
+                android:resource="@xml/jot2press_widget_info" />
         </receiver>
 
         <service

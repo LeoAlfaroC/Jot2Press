@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "journal"
+rootProject.name = "jot2press"
 include(":app")
