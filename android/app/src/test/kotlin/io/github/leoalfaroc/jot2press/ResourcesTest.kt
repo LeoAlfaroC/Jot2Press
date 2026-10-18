@@ -52,4 +52,11 @@ class ResourcesTest {
             )
         }
     }
+
+    @Test
+    fun `the arrows that point along the line turn round in a right-to-left language`() {
+        for (icon in listOf(R.drawable.ic_back, R.drawable.ic_chevron)) {
+            assertTrue(context.resources.getResourceEntryName(icon), context.getDrawable(icon)!!.isAutoMirrored)
+        }
+    }
 }
