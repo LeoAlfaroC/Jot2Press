@@ -114,7 +114,8 @@ fun searchNotification(context: Context): Notification {
             .build(),
     )
     return NotificationCompat.Builder(context, SEARCH_CHANNEL)
-        .setSmallIcon(R.drawable.ic_location_on)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(0xFF0066FF.toInt())
         .setContentTitle(SEARCH_TITLE)
         .setContentText(SEARCH_TEXT)
         .setOngoing(true)

@@ -6,4 +6,6 @@
     <color name="widget_app">#14532D</color>
     <color name="widget_on_app">#FFFFFF</color>
     <color name="widget_sheet">#FFFFFF</color>
+    <!-- The launcher icon's page: white in both themes. -->
+    <color name="icon_page">#FFFFFF</color>
 </resources>

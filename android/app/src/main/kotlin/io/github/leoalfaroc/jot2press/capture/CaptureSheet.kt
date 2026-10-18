@@ -394,7 +394,7 @@ private fun PinButton(on: Boolean, toggle: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Image(
-            painterResource(if (on) R.drawable.ic_location_on else R.drawable.ic_location_off),
+            painterResource(if (on) R.drawable.ic_pin_on else R.drawable.ic_pin_off),
             contentDescription = null,
             colorFilter = ColorFilter.tint(colors.ink),
         )

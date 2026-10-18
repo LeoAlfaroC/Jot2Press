@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the design system's app-icon-monochrome.svg; edit the SVG, not this file. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+<group android:translateX="54" android:translateY="54">
+<group android:scaleX="0.88" android:scaleY="0.88">
+<group android:translateX="-54" android:translateY="-54">
+<group android:translateX="33.7" android:translateY="76">
+<group android:scaleX="0.058" android:scaleY="0.058">
+<path android:pathData="M155 20Q102 20 77.0 -11.0Q52 -42 52 -82Q52 -114 67.5 -140.5Q83 -167 121 -192Q199 -242 256.5 -284.0Q314 -326 352.0 -362.5Q390 -399 408.5 -432.5Q427 -466 427 -499Q427 -517 415.5 -527.5Q404 -538 378 -538Q335 -538 300.0 -524.0Q265 -510 237.0 -492.0Q209 -474 186.0 -460.0Q163 -446 144 -446Q110 -446 85.5 -473.0Q61 -500 61 -536Q61 -560 70.0 -576.0Q79 -592 102 -608Q176 -660 243.5 -686.5Q311 -713 378 -713Q458 -713 507.0 -685.5Q556 -658 578.0 -610.0Q600 -562 600 -499Q600 -462 588.0 -424.0Q576 -386 543.5 -342.0Q511 -298 449.5 -245.0Q388 -192 289 -126L246 -171Q266 -166 285.0 -164.0Q304 -162 323 -162Q350 -162 384.0 -165.0Q418 -168 459.5 -171.0Q501 -174 547 -174Q624 -174 654.0 -145.5Q684 -117 684 -74Q684 -45 662.0 -22.5Q640 0 599 0Q512 0 441.5 3.0Q371 6 316.5 10.0Q262 14 222.0 17.0Q182 20 155 20Z" android:fillColor="#16171B" />
+</group></group>
+<group android:translateX="14" android:translateY="18">
+<group android:scaleX="0.8" android:scaleY="0.9">
+<group android:rotation="-6" android:pivotX="50" android:pivotY="40">
+<path android:pathData="M62 6 C30 2 6 18 6 40 C6 64 34 76 58 74 C84 72 96 56 94 36 C92 16 70 4 44 8" android:strokeColor="#16171B" android:strokeWidth="6" android:strokeLineCap="round" />
+</group></group></group>
+</group></group></group>
+</vector>

@@ -34,7 +34,8 @@ class SearchServiceTest {
         val notification = shadowOf(service).lastForegroundNotification
         assertEquals(SEARCH_TITLE, notification.extras.getString(Notification.EXTRA_TITLE))
         assertEquals(SEARCH_TEXT, notification.extras.getString(Notification.EXTRA_TEXT))
-        assertEquals(R.drawable.ic_location_on, notification.smallIcon.resId)
+        assertEquals(R.drawable.ic_notification, notification.smallIcon.resId)
+        assertEquals(0xFF0066FF.toInt(), notification.color)
         val channel = app.getSystemService(NotificationManager::class.java).getNotificationChannel(SEARCH_CHANNEL)
         assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
         assertNull(channel.sound)
