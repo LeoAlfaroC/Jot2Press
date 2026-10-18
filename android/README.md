@@ -69,13 +69,13 @@ Until credentials are saved, the widget's write button opens settings. Once save
 - An entry sent with the pin on takes the most precise position found while the dialog was open. When that is not within 20 m, the app keeps looking during the grace window, for at most a minute, and a notification says so: `Getting a precise location for your entry`. It does not keep looking with approximate location only, or with a grace window of 0.
 - An entry waits for the grace window, 60 seconds unless changed, before it is sent. During that time the dialog shows it at the top, with `Edit` and `Delete`.
 - Closing the dialog with text or photos in it keeps them as a draft.
-- The widget is one square. A red badge appears on its corner only when something needs fixing: a number for entries that could not be sent, `!` when the site rejected the sign-in. Tapping the badge opens the queue, where those entries are retried or deleted, or settings for the sign-in. Entries waiting to be sent and a kept draft show nothing.
+- The widget is one blue square with a pen. A red badge appears on its corner only when something needs fixing: a number for entries that could not be sent, `!` when the site rejected the sign-in. Tapping the badge opens the queue, where those entries are retried or deleted, or settings for the sign-in. Entries waiting to be sent and a kept draft show nothing.
 - While something needs fixing, the capture dialog says what on its first line, with `Review` (the queue) or `Fix` (settings). Writing still works: what is sent waits on the phone.
 - A widget added when it was two squares wide keeps that size after an update: remove it and add it again.
 
 ## Rename
 
-The name on the launcher, on the settings screen and in the list of widgets is `appName` in `project.json` at the repository root. Change it there, then build and install again. The queue, the draft and the settings stay, because Android recognises the app by its id, `io.github.leoalfaroc.jot2press`, which never changes.
+The name on the launcher and in the list of widgets, and the name TalkBack reads for the logo at the top of settings, is `appName` in `project.json` at the repository root. The logo itself is a drawing and keeps reading Jot2Press. Change it there, then build and install again. The queue, the draft and the settings stay, because Android recognises the app by its id, `io.github.leoalfaroc.jot2press`, which never changes.
 
 ## Moving from the journal build
 
@@ -107,4 +107,4 @@ The first command tests everything except the encryption of the credentials, whi
 
 ## Licences
 
-The day number in the capture dialog is set in Schibsted Grotesk, used under the SIL Open Font License 1.1. The licence is in `app/src/main/assets/licenses/`.
+The day number and the headings are set in Shantell Sans, and everything else in Atkinson Hyperlegible, both used under the SIL Open Font License 1.1. Their licences are in `app/src/main/assets/licenses/`.
