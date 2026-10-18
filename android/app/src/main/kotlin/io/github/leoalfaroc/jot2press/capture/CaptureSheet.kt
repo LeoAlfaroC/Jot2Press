@@ -247,7 +247,7 @@ private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureAct
     val colors = LocalJot2PressColors.current
     if (last.confirmingDelete) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextAction("Confirm delete", actions.confirmDeleteLast, color = colors.danger, flush = Alignment.Start)
+            TextAction("Confirm delete", actions.confirmDeleteLast, danger = true, flush = Alignment.Start)
             TextAction("Keep", actions.keep, flush = Alignment.End)
         }
         return
@@ -283,7 +283,7 @@ private fun Header(ui: CaptureUi, actions: CaptureActions) {
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         if (ui.confirmingDiscard) {
-            TextAction("Confirm discard", actions.confirmDiscard, color = colors.danger, flush = Alignment.Start)
+            TextAction("Confirm discard", actions.confirmDiscard, danger = true, flush = Alignment.Start)
             TextAction("Keep", actions.keep, flush = Alignment.End)
         } else {
             Day(ui.day)

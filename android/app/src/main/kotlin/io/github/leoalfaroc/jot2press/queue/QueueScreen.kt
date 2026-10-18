@@ -187,7 +187,7 @@ private fun EntryRow(
         // `Confirm delete` appears on the side opposite to `Delete`, so that a double tap in one place cannot delete.
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (confirming) {
-                TextAction("Confirm delete", onConfirmDelete, color = colors.danger, flush = Alignment.Start)
+                TextAction("Confirm delete", onConfirmDelete, danger = true, flush = Alignment.Start)
                 TextAction("Keep", onKeep, flush = Alignment.End)
             } else {
                 Spacer(Modifier.size(0.dp))
