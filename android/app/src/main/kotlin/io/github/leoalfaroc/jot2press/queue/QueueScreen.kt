@@ -133,23 +133,23 @@ fun QueueScreen(ui: QueueUi, onRetry: (String) -> Unit, onDelete: (String) -> Un
         }
     }
 
-    Column(Modifier.fillMaxSize().background(colors.sheet).windowInsetsPadding(WindowInsets.safeDrawing)) {
+    Column(Modifier.fillMaxSize().background(colors.paper).windowInsetsPadding(WindowInsets.safeDrawing)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier.size(48.dp).clip(Corner).clickable(onClickLabel = "Back to settings", role = Role.Button, onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) {
-                Image(painterResource(R.drawable.ic_back), contentDescription = "Back", colorFilter = ColorFilter.tint(colors.app))
+                Image(painterResource(R.drawable.ic_back), contentDescription = "Back", colorFilter = ColorFilter.tint(colors.ink))
             }
-            Text("Queue", Modifier.padding(start = 4.dp).semantics { heading() }, style = Jot2PressType.send, color = colors.app)
+            Text("Queue", Modifier.padding(start = 4.dp).semantics { heading() }, style = Jot2PressType.button, color = colors.ink)
         }
         LazyColumn(Modifier.fillMaxSize()) {
             items(ui.messages) { message ->
-                Text(message, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), style = Jot2PressType.label, color = colors.app)
+                Text(message, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), style = Jot2PressType.label, color = colors.ink)
             }
             if (ui.rows.isEmpty()) {
                 item {
-                    Text(EMPTY_MESSAGE, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), style = Jot2PressType.excerpt, color = colors.you)
+                    Text(EMPTY_MESSAGE, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), style = Jot2PressType.body, color = colors.text)
                 }
             }
             items(ui.rows, key = { it.id }) { row ->
@@ -181,8 +181,8 @@ private fun EntryRow(
 ) {
     val colors = LocalJot2PressColors.current
     Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("${row.time}  ${row.status}", style = Jot2PressType.label, color = colors.app)
-        Text(row.text, style = Jot2PressType.excerpt, color = colors.you, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text("${row.time}  ${row.status}", style = Jot2PressType.label, color = colors.ink)
+        Text(row.text, style = Jot2PressType.body, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
         row.detail?.let { Text(it, style = Jot2PressType.label, color = colors.quiet) }
         // `Confirm delete` appears on the side opposite to `Delete`, so that a double tap in one place cannot delete.
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

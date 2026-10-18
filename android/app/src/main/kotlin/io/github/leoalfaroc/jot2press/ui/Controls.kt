@@ -31,7 +31,7 @@ fun TextAction(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    color: Color = LocalJot2PressColors.current.app,
+    color: Color = LocalJot2PressColors.current.ink,
     flush: Alignment.Horizontal? = null,
 ) {
     Box(

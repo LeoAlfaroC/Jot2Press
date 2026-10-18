@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Jot2Press" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Paper, not Material grey, and ink, not Material teal, for whatever shows before Compose draws. -->
+    <style name="Theme.Jot2Press" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/paper</item>
+        <item name="android:colorAccent">@color/ink</item>
+    </style>
     <!-- The capture dialog: the home screen stays visible, dimmed, behind the sheet. Nothing animates. -->
     <style name="Theme.Jot2Press.Capture">
         <item name="android:windowIsTranslucent">true</item>

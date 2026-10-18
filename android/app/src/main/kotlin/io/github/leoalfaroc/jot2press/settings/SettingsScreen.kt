@@ -104,31 +104,31 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(colors.sheet)
+            .background(colors.paper)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(title, Modifier.semantics { heading() }, style = Jot2PressType.send.copy(fontSize = 22.sp, lineHeight = 28.sp), color = colors.app)
+        Text(title, Modifier.semantics { heading() }, style = Jot2PressType.button.copy(fontSize = 22.sp, lineHeight = 28.sp), color = colors.ink)
 
         settings.categoryNotice?.let { notice ->
             Outlined {
-                Text(categoryNoticeText(notice), Modifier.weight(1f).padding(vertical = 12.dp), style = Jot2PressType.label, color = colors.app)
+                Text(categoryNoticeText(notice), Modifier.weight(1f).padding(vertical = 12.dp), style = Jot2PressType.label, color = colors.ink)
                 TextAction("OK", actions.dismissCategoryNotice, flush = Alignment.End)
             }
         }
 
         // Always here, whatever the queue holds, so that the screen keeps its shape.
         Outlined(Modifier.clickable(onClickLabel = "Open the queue", role = Role.Button, onClick = actions.openQueue)) {
-            Text("Queue", Modifier.weight(1f), style = Jot2PressType.label, color = colors.app)
-            Text(ui.queueSummary, style = Jot2PressType.excerpt, color = colors.you)
+            Text("Queue", Modifier.weight(1f), style = Jot2PressType.label, color = colors.ink)
+            Text(ui.queueSummary, style = Jot2PressType.body, color = colors.text)
         }
 
         // The sign-in cannot be typed over by accident: it opens with Edit, and only Save stores it.
         val testing = form.test == TestState.Running
         Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Connection", Modifier.weight(1f).semantics { heading() }, style = Jot2PressType.send, color = colors.app)
+            Text("Connection", Modifier.weight(1f).semantics { heading() }, style = Jot2PressType.button, color = colors.ink)
             if (!form.editing) TextAction("Edit", actions.edit, flush = Alignment.End)
         }
         if (form.unreadable) Line(UNREADABLE_LINE, colors.danger)
@@ -164,19 +164,19 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
             Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(settings.wifiOnly, role = Role.Switch, onValueChange = actions.setWifiOnly),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Upload on Wi-Fi only", Modifier.weight(1f), style = Jot2PressType.excerpt, color = colors.you)
+            Text("Upload on Wi-Fi only", Modifier.weight(1f), style = Jot2PressType.body, color = colors.text)
             Switch(checked = settings.wifiOnly, onCheckedChange = null)
         }
         Row(
             Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(ui.locationOn, role = Role.Switch, onValueChange = actions.setAttachLocation),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Attach location", Modifier.weight(1f), style = Jot2PressType.excerpt, color = colors.you)
+            Text("Attach location", Modifier.weight(1f), style = Jot2PressType.body, color = colors.text)
             Switch(checked = ui.locationOn, onCheckedChange = null)
         }
         if (form.locationBlocked) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(LOCATION_BLOCKED_LINE, Modifier.weight(1f), style = Jot2PressType.label, color = colors.app)
+                Text(LOCATION_BLOCKED_LINE, Modifier.weight(1f), style = Jot2PressType.label, color = colors.ink)
                 TextAction("Open", actions.openAppSettings, flush = Alignment.End)
             }
         }
@@ -199,12 +199,12 @@ fun SettingsScreen(title: String, ui: SettingsUi, actions: SettingsActions) {
 
 @Composable
 private fun Heading(text: String) {
-    Text(text, Modifier.padding(top = 12.dp).semantics { heading() }, style = Jot2PressType.send, color = LocalJot2PressColors.current.app)
+    Text(text, Modifier.padding(top = 12.dp).semantics { heading() }, style = Jot2PressType.button, color = LocalJot2PressColors.current.ink)
 }
 
 /** Something the app says. */
 @Composable
-private fun Line(text: String, color: Color = LocalJot2PressColors.current.app) {
+private fun Line(text: String, color: Color = LocalJot2PressColors.current.ink) {
     Text(text, style = Jot2PressType.label, color = color)
 }
 
@@ -217,11 +217,11 @@ private fun Action(label: String, onClick: () -> Unit, modifier: Modifier = Modi
             .heightIn(min = 52.dp)
             .alpha(if (enabled) 1f else 0.4f)
             .clip(Corner)
-            .then(if (filled) Modifier.background(colors.app) else Modifier.border(2.dp, colors.app, Corner))
+            .then(if (filled) Modifier.background(colors.ink) else Modifier.border(2.dp, colors.ink, Corner))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = Jot2PressType.send, color = if (filled) colors.onApp else colors.app)
+        Text(label, style = Jot2PressType.button, color = if (filled) colors.onInk else colors.ink)
     }
 }
 
@@ -232,7 +232,7 @@ private fun Shown(label: String, value: String) {
     Column(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, style = Jot2PressType.label, color = colors.quiet)
-            Text(value, style = Jot2PressType.excerpt, color = colors.you)
+            Text(value, style = Jot2PressType.body, color = colors.text)
         }
         HorizontalDivider(color = colors.quiet.copy(alpha = 0.4f))
     }
@@ -241,7 +241,7 @@ private fun Shown(label: String, value: String) {
 @Composable
 private fun Outlined(
     modifier: Modifier = Modifier,
-    color: Color = LocalJot2PressColors.current.app,
+    color: Color = LocalJot2PressColors.current.ink,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
@@ -284,10 +284,10 @@ private fun Field(
         modifier = Modifier.fillMaxWidth(),
         enabled = enabled,
         label = { Text(label) },
-        supportingText = below?.let { { Text(it, style = Jot2PressType.label, color = colors.app) } },
+        supportingText = below?.let { { Text(it, style = Jot2PressType.label, color = colors.ink) } },
         singleLine = true,
         shape = Corner,
-        textStyle = Jot2PressType.excerpt.copy(color = colors.you),
+        textStyle = Jot2PressType.body.copy(color = colors.text),
         visualTransformation = if (hidden) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = keyboard),
     )
@@ -308,13 +308,13 @@ private fun CategoryPicker(settings: Settings, onChoose: (String) -> Unit) {
     val chosen = settings.categories.firstOrNull { it.slug == settings.categorySlug }
     Box {
         Outlined(Modifier.clickable(onClickLabel = "Choose the category", role = Role.Button) { open = true }) {
-            Text("Category", Modifier.weight(1f), style = Jot2PressType.label, color = colors.app)
-            Text(chosen?.name ?: settings.categorySlug.orEmpty(), style = Jot2PressType.excerpt, color = colors.you)
+            Text("Category", Modifier.weight(1f), style = Jot2PressType.label, color = colors.ink)
+            Text(chosen?.name ?: settings.categorySlug.orEmpty(), style = Jot2PressType.body, color = colors.text)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             settings.categories.forEach { category ->
                 DropdownMenuItem(
-                    text = { Text(category.name, style = Jot2PressType.excerpt, color = colors.you) },
+                    text = { Text(category.name, style = Jot2PressType.body, color = colors.text) },
                     onClick = {
                         open = false
                         onChoose(category.slug)
@@ -329,7 +329,7 @@ private fun CategoryPicker(settings: Settings, onChoose: (String) -> Unit) {
 private fun <T> Choice(title: String, options: List<T>, chosen: T, label: (T) -> String, onChoose: (T) -> Unit) {
     val colors = LocalJot2PressColors.current
     Column {
-        Text(title, Modifier.padding(top = 4.dp), style = Jot2PressType.label, color = colors.app)
+        Text(title, Modifier.padding(top = 4.dp), style = Jot2PressType.label, color = colors.ink)
         options.forEach { option ->
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(option == chosen, role = Role.RadioButton) { onChoose(option) },
@@ -337,7 +337,7 @@ private fun <T> Choice(title: String, options: List<T>, chosen: T, label: (T) ->
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 RadioButton(selected = option == chosen, onClick = null)
-                Text(label(option), style = Jot2PressType.excerpt, color = colors.you)
+                Text(label(option), style = Jot2PressType.body, color = colors.text)
             }
         }
     }

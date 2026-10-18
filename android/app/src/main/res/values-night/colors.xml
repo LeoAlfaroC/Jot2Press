@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- These repeat DarkColors in ui/Theme.kt. -->
+    <color name="paper">#101218</color>
+    <color name="ink">#7AB0FF</color>
     <color name="widget_app">#9BD8A8</color>
     <color name="widget_on_app">#121416</color>
     <color name="widget_sheet">#121416</color>

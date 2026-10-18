@@ -76,7 +76,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import io.github.leoalfaroc.jot2press.R
 import io.github.leoalfaroc.jot2press.data.DraftPhoto
-import io.github.leoalfaroc.jot2press.ui.AlertRed
+import io.github.leoalfaroc.jot2press.ui.Alert
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
 import io.github.leoalfaroc.jot2press.ui.Corner
 import io.github.leoalfaroc.jot2press.ui.Jot2PressType
@@ -178,7 +178,7 @@ fun CaptureSheet(
     Column(
         modifier
             .fillMaxWidth()
-            .background(colors.sheet, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+            .background(colors.paper, RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
             .windowInsetsPadding(insets)
             .semantics { paneTitle = "New entry" }
             // The notice and the line about the last entry bring their own height, so the sheet gives them less room above.
@@ -218,8 +218,8 @@ private fun Notice(trouble: Trouble, actions: CaptureActions) {
                     .heightIn(min = 22.dp)
                     .widthIn(min = 22.dp)
                     .clip(MarkShape)
-                    .background(AlertRed)
-                    .border(2.dp, colors.sheet, MarkShape)
+                    .background(Alert)
+                    .border(2.dp, colors.paper, MarkShape)
                     .padding(horizontal = 5.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -255,15 +255,15 @@ private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureAct
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             buildAnnotatedString {
-                withStyle(SpanStyle(color = colors.app, fontSize = Jot2PressType.label.fontSize, fontWeight = FontWeight.Medium)) {
+                withStyle(SpanStyle(color = colors.ink, fontSize = Jot2PressType.label.fontSize, fontWeight = FontWeight.Medium)) {
                     append(last.time)
                 }
                 append("  ")
                 append(last.excerpt)
             },
             modifier = Modifier.weight(1f),
-            style = Jot2PressType.excerpt,
-            color = colors.you,
+            style = Jot2PressType.body,
+            color = colors.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -303,8 +303,8 @@ private fun Day(day: LocalDate) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(day.dayOfMonth.toString(), style = Jot2PressType.dayNumber, color = colors.app)
-        Text("$weekday\n$month ${day.year}", style = Jot2PressType.label, color = colors.app)
+        Text(day.dayOfMonth.toString(), style = Jot2PressType.dayNumber, color = colors.ink)
+        Text("$weekday\n$month ${day.year}", style = Jot2PressType.label, color = colors.ink)
     }
 }
 
@@ -332,14 +332,14 @@ private fun Editor(ui: CaptureUi, actions: CaptureActions) {
             if (changed) actions.type(it.text)
         },
         modifier = Modifier.fillMaxWidth().focusRequester(focus),
-        textStyle = Jot2PressType.entry.copy(color = colors.you),
-        cursorBrush = SolidColor(colors.app),
+        textStyle = Jot2PressType.entry.copy(color = colors.text),
+        cursorBrush = SolidColor(colors.ink),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
         minLines = 3,
         maxLines = 7,
         decorationBox = { inner ->
             Box {
-                if (field.text.isEmpty()) Text("What happened?", style = Jot2PressType.entry, color = colors.app)
+                if (field.text.isEmpty()) Text("What happened?", style = Jot2PressType.entry, color = colors.ink)
                 inner()
             }
         },
@@ -354,11 +354,11 @@ private fun SendButton(enabled: Boolean, onClick: () -> Unit, modifier: Modifier
         modifier
             .heightIn(min = 52.dp)
             .clip(Corner)
-            .then(if (enabled) Modifier.background(colors.app) else Modifier.border(2.dp, colors.app, Corner))
+            .then(if (enabled) Modifier.background(colors.ink) else Modifier.border(2.dp, colors.ink, Corner))
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text("Send", style = Jot2PressType.send, color = if (enabled) colors.onApp else colors.app)
+        Text("Send", style = Jot2PressType.button, color = if (enabled) colors.onInk else colors.ink)
     }
 }
 
@@ -374,7 +374,7 @@ private fun PhotoButton(@DrawableRes icon: Int, label: String, enabled: Boolean,
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Image(painterResource(icon), contentDescription = null, colorFilter = ColorFilter.tint(if (enabled) colors.app else colors.quiet))
+        Image(painterResource(icon), contentDescription = null, colorFilter = ColorFilter.tint(if (enabled) colors.ink else colors.quiet))
     }
 }
 
@@ -396,7 +396,7 @@ private fun PinButton(on: Boolean, toggle: () -> Unit) {
         Image(
             painterResource(if (on) R.drawable.ic_location_on else R.drawable.ic_location_off),
             contentDescription = null,
-            colorFilter = ColorFilter.tint(colors.app),
+            colorFilter = ColorFilter.tint(colors.ink),
         )
     }
 }
