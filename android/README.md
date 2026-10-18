@@ -24,6 +24,33 @@ On a machine with no Java of its own, put the one inside Android Studio in front
 
 This is a debug build, signed with the debug key of the machine that built it. A build from another machine cannot be installed over it: the app has to be uninstalled first, and its queue and settings go with it.
 
+### Build a release
+
+A release build is signed with a key that lives outside the repository. Create it once:
+
+```bash
+keytool -genkeypair -keystore ~/.android/jot2press-release.jks -storetype PKCS12 -alias jot2press -keyalg RSA -keysize 4096 -validity 11000
+```
+
+Then name it in `~/.gradle/gradle.properties`, with the password chosen above:
+
+```properties
+JOT2PRESS_RELEASE_STORE_FILE=/Users/you/.android/jot2press-release.jks
+JOT2PRESS_RELEASE_STORE_PASSWORD=the password
+JOT2PRESS_RELEASE_KEY_ALIAS=jot2press
+```
+
+Build and install it:
+
+```bash
+android/gradlew -p android :app:assembleRelease
+adb install -r android/app/build/outputs/apk/release/app-release.apk
+```
+
+Without those three properties the release build stops and names the missing ones; debug builds do not need them.
+
+Keep a copy of the `.jks` file and its password somewhere safe. Every later release has to be signed with the same key: without it, the only way to install a new version is to uninstall the app, and its queue and settings go with it. A release build and a debug build cannot replace each other for the same reason.
+
 ## Set up
 
 1. Open the app. It opens on settings.

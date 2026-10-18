@@ -21,6 +21,11 @@ fun declaredName(key: String): String {
 val appName: String = declaredName("appName")
 val pluginName: String = declaredName("pluginName")
 
+// Release builds are signed with a key kept outside the repository, named in ~/.gradle/gradle.properties.
+// Losing the key means the installed app can only be replaced by uninstalling it, queue and settings included.
+val releaseKey: Map<String, String?> = listOf("STORE_FILE", "STORE_PASSWORD", "KEY_ALIAS")
+    .associate { "JOT2PRESS_RELEASE_$it" to providers.gradleProperty("JOT2PRESS_RELEASE_$it").orNull }
+
 android {
     // Permanent: Android recognises the installed app, its queue and its settings by this id.
     namespace = "io.github.leoalfaroc.jot2press"
@@ -43,6 +48,23 @@ android {
         buildConfigField("String", "PLUGIN_NAME", "\"" + pluginName.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseKey.values.all { it != null }) {
+                storeFile = file(releaseKey.getValue("JOT2PRESS_RELEASE_STORE_FILE")!!)
+                storePassword = releaseKey.getValue("JOT2PRESS_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseKey.getValue("JOT2PRESS_RELEASE_KEY_ALIAS")
+                keyPassword = releaseKey.getValue("JOT2PRESS_RELEASE_STORE_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         compose = true
@@ -61,6 +83,17 @@ android {
                 // Robolectric reaches into the JDK; from JDK 24 on that has to be allowed explicitly.
                 it.jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED", "--enable-native-access=ALL-UNNAMED")
             }
+        }
+    }
+}
+
+// Without the key a release build would come out unsigned; stop it with the names that are missing instead.
+val missingReleaseKey: List<String> = releaseKey.filterValues { it == null }.keys.toList()
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    val missing = missingReleaseKey
+    doFirst {
+        if (missing.isNotEmpty()) {
+            throw GradleException("Release builds need ${missing.joinToString()} in ~/.gradle/gradle.properties; see android/README.md")
         }
     }
 }
