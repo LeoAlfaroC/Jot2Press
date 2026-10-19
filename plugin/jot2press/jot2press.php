@@ -341,7 +341,10 @@ function jot2press_pick_category( ?string $slug ) {
  * @return int|WP_Error
  */
 function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?string $title, string $status, WP_Term $category ) {
-	$title = null === $title ? '' : sanitize_text_field( $title );
+	// Kept as typed, on one line: not sanitize_text_field(), which drops "<template>" and "%ab". A title is HTML to
+	// WordPress, so the characters it would read as markup become entities. Invalid UTF-8 is replaced, not dropped.
+	$title = null === $title ? '' : trim( preg_replace( '/[\x00-\x20\x7F]+/', ' ', $title ) );
+	$title = htmlspecialchars( $title, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8' );
 	if ( '' === $title ) {
 		// DateTime::format() is never localised, so this stays in English on any site.
 		$title = $day . ' · ' . $written->format( 'l, F j' );

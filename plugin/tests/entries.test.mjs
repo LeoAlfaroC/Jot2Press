@@ -69,6 +69,20 @@ test( 'a title field sets the title of a newly created post', async () => {
 	assert.equal( post.title.raw, `${ d } · domingo 11 de octubre` );
 } );
 
+test( 'a title is kept as typed, its line breaks and tabs turned into spaces', async () => {
+	const d = day();
+	const typed = 'Notes on <template> tags & Batch 7%ab "q" it\'s\nsecond\tline';
+	const { body } = await sendEntry( { id: uuid(), written_at: at( d, '08:00:00' ), text: 'Hola.', title: typed } );
+	const post = await readPost( body.post_id );
+	// A title is HTML to WordPress, so the characters that would be read as markup are written as entities.
+	assert.equal( post.title.raw, 'Notes on &lt;template&gt; tags &amp; Batch 7%ab "q" it\'s second line' );
+	assert.equal( shownText( post.title.raw ), 'Notes on <template> tags & Batch 7%ab "q" it\'s second line' );
+
+	// The same from an account whose titles WordPress filters through kses.
+	const fromAuthor = await sendEntry( { id: uuid(), written_at: at( day(), '08:00:00' ), text: 'Hola.', title: typed }, { who: 'author' } );
+	assert.equal( ( await readPost( fromAuthor.body.post_id ) ).title.raw, post.title.raw );
+} );
+
 test( 'a second entry is appended below the first and its title field is ignored', async () => {
 	const d = day();
 	const [ id1, id2 ] = [ uuid(), uuid() ];
