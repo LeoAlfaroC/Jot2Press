@@ -402,6 +402,12 @@ function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?st
 	);
 }
 
+/** Reads a post from the database, not from a copy cached earlier in this request. */
+function jot2press_fresh_post( int $post_id ): ?WP_Post {
+	clean_post_cache( $post_id );
+	return get_post( $post_id );
+}
+
 /** Builds the fragment that follows an entry's time: the coordinates and a Google Maps link. */
 function jot2press_render_location( array $location ): string {
 	// Five decimals is about one metre. Both values are numbers formatted here, so they need no escaping.
@@ -461,9 +467,7 @@ function jot2press_render( string $id, DateTimeImmutable $written, string $text,
  * @return int|WP_Error
  */
 function jot2press_append( int $post_id, string $markup ) {
-	// Read the content from the database, not from a copy cached earlier in this request.
-	clean_post_cache( $post_id );
-	$post    = get_post( $post_id );
+	$post    = jot2press_fresh_post( $post_id );
 	$content = rtrim( $post->post_content );
 	$content = '' === $content ? $markup : $content . "\n\n" . $markup;
 
@@ -716,9 +720,7 @@ function jot2press_recover_entry( array $entry ): int {
 	if ( ! $post_id ) {
 		return 0;
 	}
-	// Read the content from the database, not from a copy cached earlier in this request.
-	clean_post_cache( $post_id );
-	$post = get_post( $post_id );
+	$post = jot2press_fresh_post( $post_id );
 	if ( ! $post || false === strpos( $post->post_content, jot2press_marker( $entry['id'] ) ) ) {
 		return 0;
 	}
@@ -1098,8 +1100,7 @@ function jot2press_delete_orphan( int $attachment_id, array $gallery_ids ): void
 	}
 	try {
 		// Read again just before deleting: an entry may have attached or used the photo since the list was made.
-		clean_post_cache( $attachment_id );
-		$attachment = get_post( $attachment_id );
+		$attachment = jot2press_fresh_post( $attachment_id );
 		if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id, $gallery_ids ) ) {
 			return;
 		}
