@@ -246,7 +246,7 @@ private fun Notice(trouble: Trouble, actions: CaptureActions) {
     val colors = LocalJot2PressColors.current
     val (headline, reason) = when (trouble) {
         Trouble.SignInRejected -> SIGN_IN_NOTICE to null
-        is Trouble.NotSent -> (if (trouble.count == 1) "1 entry could not be sent." else "${trouble.count} entries could not be sent.") to trouble.reason
+        is Trouble.NotSent -> trouble.summary to trouble.reason
     }
     Column {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

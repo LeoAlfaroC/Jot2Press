@@ -5,7 +5,7 @@ import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.data.Settings
 import io.github.leoalfaroc.jot2press.data.isStuck
 
-/** What the widget and the queue row need to know about the queue. */
+/** What the queue row in settings needs to know about the queue. */
 data class QueueFacts(
     /** Entries in `GRACE` or `PENDING`. */
     val waiting: Int = 0,
@@ -36,23 +36,18 @@ fun queueSummary(facts: QueueFacts, authError: Boolean): String = when {
 
 /** The widget speaks only when the user has something to fix: waiting entries and a draft show nothing. */
 data class WidgetState(
-    /** Entries the site refused, and entries stuck on server errors. */
-    val failed: Int = 0,
-    /** Nothing is sent until the credentials are fixed. */
-    val signInRejected: Boolean = false,
+    /** What the badge shows, or null for no badge. */
+    val trouble: Trouble? = null,
     /** False until credentials are saved: the write button then opens settings. */
     val configured: Boolean = false,
 )
 
-fun widgetState(facts: QueueFacts, settings: Settings): WidgetState = WidgetState(
-    failed = facts.failed + facts.stuck,
-    signInRejected = settings.authError,
-    configured = settings.configured,
-)
+fun widgetState(entries: List<Entry>, settings: Settings, now: Long): WidgetState =
+    WidgetState(trouble(entries, settings, now), settings.configured)
 
-/** What the capture dialog's notice tells the user to fix. Only one at a time: the same one the widget's badge shows. */
+/** What the capture dialog's notice and the widget's badge tell the user to fix. Only one at a time. */
 sealed interface Trouble {
-    /** What the red mark beside the notice shows, as on the widget's badge. */
+    /** What the red mark beside the notice and the widget's badge show. */
     val mark: String
 
     /** Nothing is sent until the credentials are fixed, so this comes first. */
@@ -63,6 +58,9 @@ sealed interface Trouble {
     /** Entries the site refused, and entries stuck on server errors. [reason] is what the site answered, given for one entry only. */
     data class NotSent(val count: Int, val reason: String?) : Trouble {
         override val mark get() = if (count > 99) "99+" else count.toString()
+
+        /** `1 entry could not be sent.` */
+        val summary get() = if (count == 1) "1 entry could not be sent." else "$count entries could not be sent."
     }
 }
 

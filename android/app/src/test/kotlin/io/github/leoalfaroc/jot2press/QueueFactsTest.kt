@@ -52,18 +52,18 @@ class QueueFactsTest {
 
     @Test
     fun `the widget shows nothing for waiting entries, a draft or a category notice`() {
-        val quiet = facts(entry(EntryState.GRACE), entry(EntryState.PENDING), entry(EntryState.DRAFT), entry(EntryState.PENDING, failingSince = now - 60_000))
+        val quiet = listOf(entry(EntryState.GRACE), entry(EntryState.PENDING), entry(EntryState.DRAFT), entry(EntryState.PENDING, failingSince = now - 60_000))
         val settings = Settings(configured = true, categoryNotice = CategoryNotice("Travel", "Journal"))
 
-        assertEquals(WidgetState(configured = true), widgetState(quiet, settings))
+        assertEquals(WidgetState(configured = true), widgetState(quiet, settings, now))
     }
 
     @Test
     fun `the widget counts the entries that failed or are stuck, and says when the sign-in is rejected`() {
         val stuck = entry(EntryState.PENDING, failingSince = now - 2 * STUCK_AFTER_MILLIS)
 
-        assertEquals(WidgetState(failed = 2), widgetState(facts(entry(EntryState.FAILED), stuck, entry(EntryState.PENDING)), Settings()))
-        assertEquals(WidgetState(signInRejected = true), widgetState(facts(entry(EntryState.PENDING)), Settings(authError = true)))
+        assertEquals(WidgetState(Trouble.NotSent(2, null)), widgetState(listOf(entry(EntryState.FAILED), stuck, entry(EntryState.PENDING)), Settings(), now))
+        assertEquals(WidgetState(Trouble.SignInRejected), widgetState(listOf(entry(EntryState.PENDING)), Settings(authError = true), now))
     }
 
     @Test

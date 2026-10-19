@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.R
 import io.github.leoalfaroc.jot2press.TestWorld
+import io.github.leoalfaroc.jot2press.Trouble
 import io.github.leoalfaroc.jot2press.WidgetState
 import io.github.leoalfaroc.jot2press.capture.CaptureActivity
 import io.github.leoalfaroc.jot2press.data.Category
@@ -98,7 +99,7 @@ class Jot2PressWidgetTest {
 
     @Test
     fun `entries that could not be sent show as a badge over the button's corner that opens the queue`() {
-        val widget = shown(WidgetState(failed = 2, configured = true))
+        val widget = shown(WidgetState(Trouble.NotSent(2, null), configured = true))
         val badge = widget.badge()
         val write = widget.write().bounds()
 
@@ -112,16 +113,16 @@ class Jot2PressWidgetTest {
 
     @Test
     fun `the badge stops counting at 99`() {
-        val badge = shown(WidgetState(failed = 120, configured = true)).badge()
+        val badge = shown(WidgetState(Trouble.NotSent(120, null), configured = true)).badge()
 
         assertEquals("99+", badge.text)
         assertEquals("120 entries could not be sent. Opens the queue", badge.contentDescription)
-        assertEquals("1 entry could not be sent. Opens the queue", shown(WidgetState(failed = 1, configured = true)).badge().contentDescription)
+        assertEquals("1 entry could not be sent. Opens the queue", shown(WidgetState(Trouble.NotSent(1, null), configured = true)).badge().contentDescription)
     }
 
     @Test
-    fun `a rejected sign-in shows in the badge in place of the failed entries`() {
-        val badge = shown(WidgetState(failed = 2, signInRejected = true, configured = true)).badge()
+    fun `a rejected sign-in shows in the badge, which opens settings`() {
+        val badge = shown(WidgetState(Trouble.SignInRejected, configured = true)).badge()
 
         assertEquals("!", badge.text)
         assertEquals("The site rejected the sign-in. Opens settings", badge.contentDescription)
@@ -143,7 +144,7 @@ class Jot2PressWidgetTest {
         assertEquals(WidgetState(configured = true), states.first())
 
         world.settings.setAuthError(true)
-        assertEquals(WidgetState(signInRejected = true, configured = true), states.first())
+        assertEquals(WidgetState(Trouble.SignInRejected, configured = true), states.first())
     }
 
     @Test

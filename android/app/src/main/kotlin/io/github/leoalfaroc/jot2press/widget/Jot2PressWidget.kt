@@ -18,9 +18,9 @@ import androidx.glance.layout.fillMaxSize
 import io.github.leoalfaroc.jot2press.AppContainer
 import io.github.leoalfaroc.jot2press.Jot2PressApp
 import io.github.leoalfaroc.jot2press.R
+import io.github.leoalfaroc.jot2press.Trouble
 import io.github.leoalfaroc.jot2press.WidgetState
 import io.github.leoalfaroc.jot2press.capture.CaptureActivity
-import io.github.leoalfaroc.jot2press.queueFacts
 import io.github.leoalfaroc.jot2press.settings.SettingsActivity
 import io.github.leoalfaroc.jot2press.widgetState
 import kotlinx.coroutines.flow.Flow
@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.first
 /** What the widget shows, each time the queue or the settings change. */
 fun widgetStates(container: AppContainer): Flow<WidgetState> =
     combine(container.queue.observe(), container.settings.flow) { entries, settings ->
-        widgetState(queueFacts(entries, container.clock.millis()), settings)
+        widgetState(entries, settings, container.clock.millis())
     }.distinctUntilChanged()
 
 class Jot2PressWidget : GlanceAppWidget() {
@@ -49,19 +49,10 @@ class Jot2PressWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = Jot2PressWidget()
 }
 
-/** What the badge shows, or null when there is no badge. A rejected sign-in comes first: nothing is sent until it is fixed. */
-fun badgeText(state: WidgetState): String? = when {
-    state.signInRejected -> "!"
-    state.failed > 99 -> "99+"
-    state.failed > 0 -> state.failed.toString()
-    else -> null
-}
-
 /** What a screen reader says for the badge, and where touching it leads. */
-fun badgeDescription(state: WidgetState): String = when {
-    state.signInRejected -> "The site rejected the sign-in. Opens settings"
-    state.failed == 1 -> "1 entry could not be sent. Opens the queue"
-    else -> "${state.failed} entries could not be sent. Opens the queue"
+fun badgeDescription(trouble: Trouble): String = when (trouble) {
+    Trouble.SignInRejected -> "The site rejected the sign-in. Opens settings"
+    is Trouble.NotSent -> "${trouble.summary} Opens the queue"
 }
 
 /**
@@ -77,15 +68,18 @@ fun widgetViews(context: Context, state: WidgetState): RemoteViews = RemoteViews
         setOnClickPendingIntent(R.id.write, open(context, WRITE, Intent(context, SettingsActivity::class.java)))
         setContentDescription(R.id.write, "Set up the journal. Opens settings")
     }
-    val badge = badgeText(state)
-    if (badge == null) {
+    val trouble = state.trouble
+    if (trouble == null) {
         setViewVisibility(R.id.badge, View.GONE)
     } else {
         setViewVisibility(R.id.badge, View.VISIBLE)
-        setTextViewText(R.id.badge, badge)
-        setContentDescription(R.id.badge, badgeDescription(state))
+        setTextViewText(R.id.badge, trouble.mark)
+        setContentDescription(R.id.badge, badgeDescription(trouble))
         // A rejected sign-in is fixed in settings; entries that could not be sent, in the queue.
-        val fix = if (state.signInRejected) Intent(context, SettingsActivity::class.java) else SettingsActivity.queueIntent(context)
+        val fix = when (trouble) {
+            Trouble.SignInRejected -> Intent(context, SettingsActivity::class.java)
+            is Trouble.NotSent -> SettingsActivity.queueIntent(context)
+        }
         setOnClickPendingIntent(R.id.badge, open(context, BADGE, fix))
     }
 }
