@@ -147,17 +147,17 @@ class Queue(
     suspend fun markSent(id: String) = delete(id)
 
     /** The server rejected this entry, or one of its photos. [code] is the plugin's error code, when it gave one. */
-    suspend fun markFailed(id: String, message: String, code: String? = null) = change(id) {
-        if (it.state == EntryState.PENDING) it.copy(state = EntryState.FAILED, lastError = message, lastErrorCode = code, failingSince = null) else it
+    suspend fun markFailed(id: String, message: String, code: String? = null) = changePending(id) {
+        it.copy(state = EntryState.FAILED, lastError = message, lastErrorCode = code, failingSince = null)
     }
 
     /** The server failed on this entry. Keeps its answer, and the moment it first happened. */
-    suspend fun recordServerError(id: String, message: String) = change(id) {
-        if (it.state == EntryState.PENDING) it.copy(lastError = message, failingSince = it.failingSince ?: clock.millis()) else it
+    suspend fun recordServerError(id: String, message: String) = changePending(id) {
+        it.copy(lastError = message, failingSince = it.failingSince ?: clock.millis())
     }
 
-    suspend fun clearServerError(id: String) = change(id) {
-        if (it.state == EntryState.PENDING) it.copy(lastError = null, failingSince = null) else it
+    suspend fun clearServerError(id: String) = changePending(id) {
+        it.copy(lastError = null, failingSince = null)
     }
 
     /** After `unknown_photo` the site no longer has the entry's photos: they are uploaded again. */
@@ -177,8 +177,9 @@ class Queue(
 
     private fun Entry.isInGrace(): Boolean = state == EntryState.GRACE && (graceEndsAt ?: 0) > clock.millis()
 
-    private suspend fun change(id: String, change: (Entry) -> Entry) {
-        db.withTransaction { dao.byId(id)?.let { dao.put(change(it)) } }
+    /** Changes an entry only while it is pending: one deleted, taken back or failed meanwhile stays as it is. */
+    private suspend fun changePending(id: String, change: (Entry) -> Entry) {
+        db.withTransaction { dao.byId(id)?.takeIf { it.state == EntryState.PENDING }?.let { dao.put(change(it)) } }
     }
 
     companion object {
