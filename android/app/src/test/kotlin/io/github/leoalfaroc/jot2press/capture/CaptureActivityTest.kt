@@ -23,6 +23,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.TestWorld
 import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.location.Permission
+import io.github.leoalfaroc.jot2press.rejectSignIn
 import io.github.leoalfaroc.jot2press.settings.SettingsActivity
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
@@ -84,7 +85,7 @@ class CaptureActivityTest {
 
     @Test
     fun `a rejected sign-in is noticed, and Fix opens settings, keeping the text as the draft`() {
-        runBlocking { world.settings.setAuthError(true) }
+        runBlocking { world.settings.rejectSignIn() }
         open().use { scenario ->
             lateinit var dialog: CaptureActivity
             scenario.onActivity { dialog = it }

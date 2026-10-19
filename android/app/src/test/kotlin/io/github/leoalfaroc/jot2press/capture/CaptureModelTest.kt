@@ -8,6 +8,7 @@ import io.github.leoalfaroc.jot2press.data.DraftPhoto
 import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.data.MAX_PHOTOS
 import io.github.leoalfaroc.jot2press.location.Permission
+import io.github.leoalfaroc.jot2press.rejectSignIn
 import io.github.leoalfaroc.jot2press.send.Scheduler
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -362,7 +363,7 @@ class CaptureModelTest {
         world.queue.markFailed(entry.id, "Sorry, you are not allowed to create posts.")
         assertEquals(Trouble.NotSent(1, "Sorry, you are not allowed to create posts."), model.trouble.first())
 
-        world.settings.setAuthError(true)
+        world.settings.rejectSignIn()
         assertEquals(Trouble.SignInRejected, model.trouble.first())
     }
 

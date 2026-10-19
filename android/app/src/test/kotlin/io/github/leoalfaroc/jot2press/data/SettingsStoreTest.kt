@@ -3,6 +3,7 @@ package io.github.leoalfaroc.jot2press.data
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.leoalfaroc.jot2press.TitleLanguage
 import io.github.leoalfaroc.jot2press.Titles
+import io.github.leoalfaroc.jot2press.rejectSignIn
 import io.github.leoalfaroc.jot2press.tempStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +65,7 @@ class SettingsStoreTest {
         settings.setPostStatus(PostStatus.PUBLIC)
         settings.setTitleLanguage(TitleLanguage.SPANISH)
         settings.setTitlePattern("d MMM yyyy")
-        settings.setAuthError(true)
+        settings.rejectSignIn()
 
         val kept = settings.get()
         assertEquals(0, kept.graceSeconds)
@@ -86,7 +87,7 @@ class SettingsStoreTest {
 
     @Test
     fun `saved credentials configure the app and end a rejected sign-in, without inventing what the site reports`() = runTest {
-        settings.setAuthError(true)
+        settings.rejectSignIn()
         settings.credentialsSaved()
 
         val kept = settings.get()
@@ -124,7 +125,7 @@ class SettingsStoreTest {
 
     @Test
     fun `the first successful connection configures the app and chooses the default category`() = runTest {
-        settings.setAuthError(true)
+        settings.rejectSignIn()
         settings.connectionSucceeded(site(journal, travel))
 
         val kept = settings.get()

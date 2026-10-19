@@ -11,6 +11,7 @@ import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.PostStatus
 import io.github.leoalfaroc.jot2press.data.megabytes
 import io.github.leoalfaroc.jot2press.location.Permission
+import io.github.leoalfaroc.jot2press.rejectSignIn
 import io.github.leoalfaroc.jot2press.send.Scheduler
 import io.github.leoalfaroc.jot2press.send.Sender
 import kotlinx.coroutines.Dispatchers
@@ -163,7 +164,7 @@ class SettingsModelTest {
     @Test
     fun `Save lets entries held by a rejected sign-in go again`() = runTest {
         world.connect()
-        world.settings.setAuthError(true)
+        world.settings.rejectSignIn()
         world.write("Coffee")
         model.load()
         model.edit()
@@ -264,7 +265,7 @@ class SettingsModelTest {
     @Test
     fun `testing the saved credentials keeps what the site reported and lets the queue go again`() = runTest {
         world.connect()
-        world.settings.setAuthError(true)
+        world.settings.rejectSignIn()
         world.write("Coffee")
         world.server.enqueue(status())
         model.load()

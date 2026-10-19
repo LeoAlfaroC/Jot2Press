@@ -18,6 +18,7 @@ import io.github.leoalfaroc.jot2press.WidgetState
 import io.github.leoalfaroc.jot2press.capture.CaptureActivity
 import io.github.leoalfaroc.jot2press.data.Category
 import io.github.leoalfaroc.jot2press.declaredAppName
+import io.github.leoalfaroc.jot2press.rejectSignIn
 import io.github.leoalfaroc.jot2press.settings.SettingsActivity
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -143,7 +144,7 @@ class Jot2PressWidgetTest {
         world.settings.categoryFellBack(Category("journal", "Journal"))
         assertEquals(WidgetState(configured = true), states.first())
 
-        world.settings.setAuthError(true)
+        world.settings.rejectSignIn()
         assertEquals(WidgetState(Trouble.SignInRejected, configured = true), states.first())
     }
 

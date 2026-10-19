@@ -4,12 +4,18 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import io.github.leoalfaroc.jot2press.data.SecretBox
+import io.github.leoalfaroc.jot2press.data.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import java.io.File
 
 /** A settings store in a file of its own, so that tests do not share one. Cancel `scope` when the test ends. */
 fun tempStore(folder: File, scope: CoroutineScope): DataStore<Preferences> =
     PreferenceDataStoreFactory.create(scope = scope) { File(folder, "settings.preferences_pb") }
+
+/** As when the site rejects the stored credentials: nothing is sent until they are saved again or tested. */
+suspend fun SettingsStore.rejectSignIn() {
+    credentialsRejected(get().credentialsVersion)
+}
 
 /** Stands in for the Android Keystore, which does not exist off a device. It is not encryption. */
 class FakeBox : SecretBox {

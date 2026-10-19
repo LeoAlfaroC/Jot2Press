@@ -610,7 +610,7 @@ class SenderTest {
             assertEquals(before + 1, server.requestCount)
 
             created()
-            settings.setAuthError(false)
+            settings.credentialsSaved()
             assertEquals(Sender.Outcome.DONE, sender.run())
             assertTrue(queue.observe().first().isEmpty())
         }

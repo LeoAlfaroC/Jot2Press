@@ -95,7 +95,6 @@ class SettingsStore(private val store: DataStore<Preferences>) {
 
     /** What the site reports about uploads: its limit and the photo types it accepts. */
     suspend fun setUploadRules(status: SiteStatus) = change { it.uploadRules(status) }
-    suspend fun setAuthError(on: Boolean) = change { it[AUTH_ERROR] = on }
 
     /**
      * The site rejected the credentials of [version]. Nothing is recorded once Save has stored others since: in the
