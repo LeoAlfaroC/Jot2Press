@@ -101,7 +101,7 @@ The first command tests everything except the encryption of the credentials, whi
 - The app talks only to the site it was given, over HTTPS. Plain HTTP is turned off.
 - App data is left out of device backups and transfers. An unsent entry exists only on the phone, and is deleted from it once the site confirms it.
 - The app keeps its own copy of each photo of an entry until the site confirms the entry, then deletes it. Originals in the gallery are never changed.
-- A photo re-encoded to fit the upload limit loses its metadata, location included. A photo sent as it is keeps whatever its file holds, which can include where it was taken.
+- A photo never leaves the phone with where it was taken, whatever the pin says. A photo re-encoded to fit the upload limit loses all its metadata. A photo sent as it is keeps the rest of what its file holds (the camera, the time, the orientation): the app takes the GPS tags out of a copy, and leaves the image itself untouched.
 - Location is off until you turn on `Attach location`. Only coordinates are kept, never an address, and they are sent only for an entry whose pin was on. A position the phone kept for an entry whose pin was then turned off is never sent, and is deleted with the entry.
 - In the post, the coordinates can be read by whoever can read the post, and opening its Google Maps link sends them to Google.
 

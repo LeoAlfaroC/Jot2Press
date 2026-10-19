@@ -20,12 +20,16 @@ class UnreadablePhoto : Exception("The photo cannot be read.")
 /**
  * Makes a photo fit the site. The copy is never changed: a retry prepares the same file again.
  * Re-encoding keeps the orientation, applied to the pixels, and drops every other piece of metadata.
+ * A photo that fits goes as it is, but never with where it was taken.
  */
 class PhotoEncoder(private val cache: File) {
     fun prepare(source: File, limit: Long): Prepared {
         if (!source.isFile) throw UnreadablePhoto()
         val kind = PhotoKind.of(source)
-        if (kind.mediaType != null && source.length() <= limit) return Prepared(source, kind.mediaType, temporary = false)
+        if (kind.mediaType != null && source.length() <= limit) {
+            // A photo whose place cannot be taken out goes the way a photo over the limit does, which drops it.
+            asItIs(source, kind.mediaType)?.let { return it }
+        }
 
         val (width, height) = imageSize(source) ?: throw UnreadablePhoto()
         var sample = sampleSize(width, height, limit)
@@ -86,6 +90,28 @@ class PhotoEncoder(private val cache: File) {
         }
     }
 
+    /**
+     * The photo as it is, less the GPS tags a camera app may have written into it: those go from a temporary copy,
+     * and the image itself is copied byte for byte. Null when they cannot be taken out without encoding it again.
+     */
+    private fun asItIs(source: File, mediaType: String): Prepared? {
+        var copy: File? = null
+        return try {
+            if (GPS_TAGS.none { ExifInterface(source).getAttribute(it) != null }) return Prepared(source, mediaType, temporary = false)
+            cache.mkdirs()
+            copy = File.createTempFile("upload", "." + mediaType.substringAfter('/'), cache)
+            source.copyTo(copy, overwrite = true)
+            ExifInterface(copy).apply {
+                GPS_TAGS.forEach { setAttribute(it, null) }
+                saveAttributes()
+            }
+            Prepared(copy, mediaType, temporary = true)
+        } catch (e: Exception) {
+            copy?.delete()
+            null
+        }
+    }
+
     private fun write(bitmap: Bitmap, quality: Int, out: File) {
         out.outputStream().use { if (!bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it)) throw IOException("The photo could not be encoded.") }
     }
@@ -105,6 +131,21 @@ class PhotoEncoder(private val cache: File) {
         const val JPEG = "image/jpeg"
         val QUALITIES = listOf(90, 80, 70, 60)
         const val SHRINK = 0.8f
+
+        /** Every tag of the GPS directory: where the photo was taken, and when and how that was measured. */
+        val GPS_TAGS = listOf(
+            ExifInterface.TAG_GPS_VERSION_ID, ExifInterface.TAG_GPS_LATITUDE_REF, ExifInterface.TAG_GPS_LATITUDE,
+            ExifInterface.TAG_GPS_LONGITUDE_REF, ExifInterface.TAG_GPS_LONGITUDE, ExifInterface.TAG_GPS_ALTITUDE_REF,
+            ExifInterface.TAG_GPS_ALTITUDE, ExifInterface.TAG_GPS_TIMESTAMP, ExifInterface.TAG_GPS_SATELLITES,
+            ExifInterface.TAG_GPS_STATUS, ExifInterface.TAG_GPS_MEASURE_MODE, ExifInterface.TAG_GPS_DOP,
+            ExifInterface.TAG_GPS_SPEED_REF, ExifInterface.TAG_GPS_SPEED, ExifInterface.TAG_GPS_TRACK_REF,
+            ExifInterface.TAG_GPS_TRACK, ExifInterface.TAG_GPS_IMG_DIRECTION_REF, ExifInterface.TAG_GPS_IMG_DIRECTION,
+            ExifInterface.TAG_GPS_MAP_DATUM, ExifInterface.TAG_GPS_DEST_LATITUDE_REF, ExifInterface.TAG_GPS_DEST_LATITUDE,
+            ExifInterface.TAG_GPS_DEST_LONGITUDE_REF, ExifInterface.TAG_GPS_DEST_LONGITUDE, ExifInterface.TAG_GPS_DEST_BEARING_REF,
+            ExifInterface.TAG_GPS_DEST_BEARING, ExifInterface.TAG_GPS_DEST_DISTANCE_REF, ExifInterface.TAG_GPS_DEST_DISTANCE,
+            ExifInterface.TAG_GPS_PROCESSING_METHOD, ExifInterface.TAG_GPS_AREA_INFORMATION, ExifInterface.TAG_GPS_DATESTAMP,
+            ExifInterface.TAG_GPS_DIFFERENTIAL, ExifInterface.TAG_GPS_H_POSITIONING_ERROR,
+        )
     }
 }
 

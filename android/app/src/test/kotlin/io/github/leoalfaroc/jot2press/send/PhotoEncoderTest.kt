@@ -64,6 +64,37 @@ class PhotoEncoderTest {
         assertEquals("image/png", sentPng.mediaType)
     }
 
+    /** Tags [file] with where it was taken, and with an orientation that must survive. */
+    private fun geotag(file: File) = ExifInterface(file).apply {
+        setLatLong(40.4168, -3.7038)
+        setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_ROTATE_90.toString())
+        saveAttributes()
+    }
+
+    @Test
+    fun `a photo sent as it is goes without where it was taken, its image and orientation untouched`() {
+        for ((format, name, type) in listOf(
+            Triple(Bitmap.CompressFormat.JPEG, "a.jpg", "image/jpeg"),
+            Triple(Bitmap.CompressFormat.PNG, "b.png", "image/png"),
+        )) {
+            val source = write(noisy(64, 48), format, name = name)
+            geotag(source)
+            val before = source.readBytes()
+
+            val sent = encoder.prepare(source, limit = source.length())
+
+            assertTrue(name, sent.temporary)
+            assertEquals(type, sent.mediaType)
+            val exif = ExifInterface(sent.file)
+            assertEquals(name, null, exif.latLong)
+            assertEquals(name, null, exif.getAttribute(ExifInterface.TAG_GPS_LATITUDE))
+            assertEquals(name, ExifInterface.ORIENTATION_ROTATE_90, exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0))
+            // Decoded alike: the image itself was copied, not encoded again.
+            assertTrue(name, BitmapFactory.decodeFile(source.path).sameAs(BitmapFactory.decodeFile(sent.file.path)))
+            assertArrayEquals(name, before, source.readBytes())
+        }
+    }
+
     @Test
     fun `a photo over the limit comes out a JPEG under it, and the copy is left as it was`() {
         val source = write(noisy(800, 600), Bitmap.CompressFormat.PNG)
