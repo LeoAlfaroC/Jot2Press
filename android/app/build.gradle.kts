@@ -61,6 +61,10 @@ android {
 
     buildTypes {
         release {
+            // Compose is much slower without R8. The libraries keep what they load by name with their own rules.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.getByName("release")
         }
     }
