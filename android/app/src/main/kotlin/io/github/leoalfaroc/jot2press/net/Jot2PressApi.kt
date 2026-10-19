@@ -3,6 +3,7 @@ package io.github.leoalfaroc.jot2press.net
 import io.github.leoalfaroc.jot2press.BuildConfig
 import io.github.leoalfaroc.jot2press.data.Category
 import io.github.leoalfaroc.jot2press.data.Credentials
+import io.github.leoalfaroc.jot2press.data.PhotoKind
 import io.github.leoalfaroc.jot2press.data.SiteStatus
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.SerializationException
@@ -130,7 +131,7 @@ class HttpJot2PressApi(private val client: OkHttpClient, private val credentials
         val body = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("id", id)
-            .addFormDataPart("photo", "$id.${EXTENSIONS[mediaType] ?: "jpg"}", file.asRequestBody(mediaType.toMediaType()))
+            .addFormDataPart("photo", "$id.${extensionOf(mediaType)}", file.asRequestBody(mediaType.toMediaType()))
             .build()
         return call("photos", { post(body) }) { json ->
             when (json.text("status")) {
@@ -218,6 +219,7 @@ class HttpJot2PressApi(private val client: OkHttpClient, private val credentials
         private val JSON = "application/json; charset=utf-8".toMediaType()
 
         /** The file name's extension matches the type, as WordPress checks the two against each other. */
-        private val EXTENSIONS = mapOf("image/jpeg" to "jpg", "image/png" to "png", "image/webp" to "webp")
+        private fun extensionOf(mediaType: String): String =
+            PhotoKind.entries.firstOrNull { it.mediaType == mediaType }?.extension ?: PhotoKind.JPEG.extension
     }
 }
