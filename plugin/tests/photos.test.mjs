@@ -232,6 +232,28 @@ test( 'a photo the server cannot store is answered as a server failure', async (
 	assert.equal( body.message, 'The photo could not be stored.' );
 } );
 
+test( 'an upload the server could not receive is answered as a server failure, so the app tries it again', () => {
+	// PHP's own codes: 3 partial, 6 no temporary folder, 7 cannot write to disk, 8 stopped by an extension; 4 no file.
+	const php = `
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$answers = array();
+		foreach ( array( 3, 4, 6, 7, 8 ) as $error ) {
+			$files   = array( 'photo' => array( 'name' => 'photo.jpg', 'type' => 'image/jpeg', 'tmp_name' => '', 'error' => $error, 'size' => 0 ) );
+			$request = new WP_REST_Request( 'POST', '/jot2press/v1/photos' );
+			$request->set_body_params( array( 'id' => wp_generate_uuid4() ) );
+			$request->set_file_params( $files );
+			$response          = rest_do_request( $request );
+			$answers[ $error ] = array( $response->get_status(), $response->get_data()['code'] );
+		}
+		echo 'RESULT:' . wp_json_encode( $answers ) . ':END';
+	`;
+	const answers = JSON.parse( wp( 'eval', php ).match( /RESULT:(.*):END/s )[ 1 ] );
+	for ( const error of [ '3', '6', '7', '8' ] ) {
+		assert.deepEqual( answers[ error ], [ 500, 'jot2press_failure' ], `error ${ error }` );
+	}
+	assert.deepEqual( answers[ '4' ], [ 400, 'missing_photo' ] );
+} );
+
 test( 'each photo gets its own random slug, not one derived from a title', async () => {
 	const first = await uploadPhoto();
 	const second = await uploadPhoto();

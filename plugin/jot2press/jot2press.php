@@ -733,8 +733,13 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 	if ( UPLOAD_ERR_INI_SIZE === $upload_error || UPLOAD_ERR_FORM_SIZE === $upload_error ) {
 		return jot2press_error( 'photo_too_large', 'The photo exceeds the server limit.', 413 );
 	}
+	if ( UPLOAD_ERR_NO_FILE === $upload_error ) {
+		return jot2press_error( 'missing_photo', 'A photo file is required.', 400 );
+	}
 	if ( UPLOAD_ERR_OK !== $upload_error ) {
-		return jot2press_error( 'missing_photo', 'The photo did not arrive complete.', 400 );
+		// A cut-off upload, a missing temporary folder, a full disk, an extension that stopped it: none is the photo's
+		// fault, and sending it again can work. A 4xx would make the app fail the entry for good.
+		return jot2press_error( 'jot2press_failure', 'The server could not receive the photo (PHP upload error ' . $upload_error . ').', 500 );
 	}
 
 	// The handler decides what is a photo from the file's own bytes, never from its name or claimed type.
