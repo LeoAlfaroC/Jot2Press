@@ -6,6 +6,7 @@ import io.github.leoalfaroc.jot2press.data.MAX_PHOTOS
 import io.github.leoalfaroc.jot2press.data.Queue
 import io.github.leoalfaroc.jot2press.data.SettingsStore
 import io.github.leoalfaroc.jot2press.data.day
+import io.github.leoalfaroc.jot2press.data.oneLine
 import io.github.leoalfaroc.jot2press.data.time
 import io.github.leoalfaroc.jot2press.data.withPhotos
 import io.github.leoalfaroc.jot2press.location.Locator
@@ -255,14 +256,12 @@ class CaptureModel(
                 day = ui.entryDay ?: today,
                 lastEntry = last?.let {
                     val confirming = ui.lastEntry?.id == it.id && ui.lastEntry.confirmingDelete
-                    LastEntry(it.id, it.time.orEmpty(), withPhotos(count, excerpt(it.text)), confirming)
+                    LastEntry(it.id, it.time.orEmpty(), withPhotos(count, it.oneLine.take(EXCERPT_LENGTH)), confirming)
                 },
                 nextChangeAt = minOf(midnight, last?.graceEndsAt ?: Long.MAX_VALUE),
             )
         }
     }
-
-    private fun excerpt(text: String): String = text.trim().replace(Regex("\\s+"), " ").take(EXCERPT_LENGTH)
 
     private companion object {
         const val EXCERPT_LENGTH = 120

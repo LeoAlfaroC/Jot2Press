@@ -55,3 +55,8 @@ val Entry.day: LocalDate? get() = writtenAt?.let { OffsetDateTime.parse(it).toLo
 
 /** The entry's time as `HH:mm`, in its own offset. */
 val Entry.time: String? get() = writtenAt?.substring(11, 16)
+
+private val WHITESPACE = Regex("\\s+")
+
+/** The entry's text on one line, as a list shows it: its line breaks and runs of spaces become one space. */
+val Entry.oneLine: String get() = text.trim().replace(WHITESPACE, " ")

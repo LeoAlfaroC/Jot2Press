@@ -40,6 +40,7 @@ import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.data.Settings
 import io.github.leoalfaroc.jot2press.data.day
 import io.github.leoalfaroc.jot2press.data.isStuck
+import io.github.leoalfaroc.jot2press.data.oneLine
 import io.github.leoalfaroc.jot2press.data.time
 import io.github.leoalfaroc.jot2press.data.withPhotos
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
@@ -112,7 +113,7 @@ fun queueUi(
             QueueRow(
                 id = entry.id,
                 time = listOfNotNull(day?.takeIf { it != today }?.let(OTHER_DAY::format), entry.time).joinToString(" · "),
-                text = withPhotos(photoCounts[entry.id] ?: 0, entry.text.trim().replace(Regex("\\s+"), " ")),
+                text = withPhotos(photoCounts[entry.id] ?: 0, entry.oneLine),
                 status = when {
                     entry.state == EntryState.GRACE -> "In its grace window"
                     entry.state == EntryState.FAILED -> FAILED_STATUS
