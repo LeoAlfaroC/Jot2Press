@@ -2,6 +2,7 @@ package io.github.leoalfaroc.jot2press
 
 import android.app.Application
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.emptyPreferences
@@ -126,7 +127,15 @@ fun realContainer(app: Application): AppContainer {
         location = AndroidLocationSource(app, PhoneClock),
         searchService = AndroidSearchService(app) { dialogs.onScreen },
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
-        sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
+        sender = Sender(
+            queue,
+            settings,
+            credentials = { credentials.get() },
+            apiFor = apiFor,
+            files = photoFiles,
+            prepare = PhotoEncoder(app.cacheDir)::prepare,
+            networkUp = { connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true },
+        ),
         apiFor = apiFor,
         // A failure in work launched here ends that work only: the app does not crash for it.
         scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineExceptionHandler { _, _ -> }),

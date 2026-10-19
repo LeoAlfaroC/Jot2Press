@@ -37,6 +37,7 @@ import mockwebserver3.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -66,9 +67,11 @@ class SenderTest {
     private var prepare: (java.io.File, Long, Set<String>) -> Prepared =
         { source, limit, accepted -> PhotoEncoder(folder.newFolder("cache-${++caches}")).prepare(source, limit, accepted) }
     private var caches = 0
+    /** Whether the phone is on a network that reaches the internet. */
+    private var online = false
     private val sender by lazy {
         saved = signIn
-        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit, accepted -> prepare(source, limit, accepted) }, deviceLocale = { Locale.FRENCH })
+        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit, accepted -> prepare(source, limit, accepted) }, deviceLocale = { Locale.FRENCH }, networkUp = { online })
     }
 
     private fun api(signIn: Credentials): Jot2PressApi {
@@ -435,12 +438,44 @@ class SenderTest {
     }
 
     @Test
-    fun `without an answer the entry waits and nothing is recorded`() = runTest {
+    fun `without a network the entry waits and nothing is recorded`() = runTest {
         val entry = pending("Coffee")
         server.close()
 
         assertEquals(Sender.Outcome.RETRY, sender.run())
         assertEquals(entry, stored(entry.id))
+    }
+
+    @Test
+    fun `a site that does not answer while the phone is online is kept on the entry, which shows stuck after an hour`() = runTest {
+        // A lapsed certificate or a domain gone: every attempt fails before the site can answer.
+        online = true
+        val entry = pending("Coffee")
+        val began = clock.millis()
+        server.close()
+        assertEquals(Sender.Outcome.RETRY, sender.run())
+
+        val waiting = stored(entry.id)!!
+        assertEquals(EntryState.PENDING, waiting.state)
+        assertTrue(waiting.lastError!!.startsWith("Could not reach the site: "))
+        assertEquals(began, waiting.failingSince)
+
+        clock.advance(Duration.ofMinutes(61))
+        assertEquals(Sender.Outcome.RETRY, sender.run())
+        assertEquals(began, stored(entry.id)!!.failingSince)
+        assertTrue(stored(entry.id)!!.isStuck(clock.millis()))
+    }
+
+    @Test
+    fun `a site that does not answer an entry's photos while the phone is online is kept on the entry`() = runTest {
+        online = true
+        val (entry, _) = pendingWithPhotos("Coffee", 1)
+        server.close()
+
+        assertEquals(Sender.Outcome.RETRY, sender.run())
+
+        assertTrue(stored(entry.id)!!.lastError!!.startsWith("Could not reach the site: "))
+        assertNotNull(stored(entry.id)!!.failingSince)
     }
 
     @Test

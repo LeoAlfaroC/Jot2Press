@@ -74,6 +74,8 @@ class Sender(
     /** Makes a photo's copy fit the limit and the types the site accepts: `PhotoEncoder.prepare`. */
     private val prepare: (File, Long, Set<String>) -> Prepared,
     private val deviceLocale: () -> Locale = { Locale.getDefault() },
+    /** Whether the phone is on a network that reaches the internet: a site that does not answer then is the site's trouble. */
+    private val networkUp: () -> Boolean = { false },
 ) {
     enum class Outcome {
         /** Nothing is left to send. */
@@ -151,7 +153,7 @@ class Sender(
         val stored = settings.get()
         val (limit, types) = stored.maxUploadBytes?.let { it to stored.photoTypes } ?: when (val status = api.status()) {
             is ApiResult.Ok -> status.value.also { settings.setUploadRules(it) }.let { it.maxUploadBytes to it.photoTypes }
-            is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
+            is ApiResult.Unreachable -> return unreachable(status, entry)
             is ApiResult.Refused -> return refused(status, signIn, entry)
         }
         val accepted = types ?: PLUGIN_PHOTO_TYPES
@@ -180,7 +182,7 @@ class Sender(
             }
             when (result) {
                 is ApiResult.Ok -> queue.markUploaded(photo.id)
-                is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
+                is ApiResult.Unreachable -> return unreachable(result, entry)
                 is ApiResult.Refused -> {
                     if (result.code == TYPE_NOT_ALLOWED) {
                         // The site no longer takes a type it took: read what it takes now, and start the entry over,
@@ -223,8 +225,7 @@ class Sender(
                 queue.markSent(entry.id)
                 Step.Again
             }
-            // No answer says nothing about the site, so nothing is recorded.
-            is ApiResult.Unreachable -> Step.Stop(Outcome.RETRY)
+            is ApiResult.Unreachable -> unreachable(result, entry)
             // The site's cleanup deleted photos uploaded long ago, while the entry waited: they are uploaded again,
             // once per run, so that a site that keeps losing them fails the entry instead of looping.
             is ApiResult.Refused -> if (result.code == UNKNOWN_PHOTO && reuploaded.add(entry.id)) {
@@ -234,6 +235,16 @@ class Sender(
                 refused(result, signIn, entry)
             }
         }
+
+    /**
+     * No answer. Without a network that says nothing about the site, so nothing is recorded. With one, the site is
+     * the trouble (a lapsed certificate, a domain gone): it is kept on the entry like a server error, so that an entry
+     * left waiting for days shows stuck, and why.
+     */
+    private suspend fun unreachable(result: ApiResult.Unreachable, entry: Entry): Step {
+        if (networkUp()) queue.recordServerError(entry.id, "Could not reach the site: ${result.reason}")
+        return Step.Stop(Outcome.RETRY)
+    }
 
     /** What a refusal of any request of [entry] does to the queue. [message] replaces the site's own, when given. */
     private suspend fun refused(result: ApiResult.Refused, signIn: Credentials, entry: Entry, message: String = result.message): Step =

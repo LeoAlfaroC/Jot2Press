@@ -76,7 +76,7 @@ data class QueueUi(
 )
 
 const val AUTH_MESSAGE = "Nothing is being sent: the site rejected the credentials. Fix this under Connection in settings."
-const val STUCK_MESSAGE = "The server keeps refusing an entry, and the others wait behind it. The app keeps trying. The cause is on the site."
+const val STUCK_MESSAGE = "The site keeps failing on an entry, and the others wait behind it. The app keeps trying. The cause is on the site."
 const val WIFI_MESSAGE = "Waiting for Wi-Fi."
 const val EMPTY_MESSAGE = "Nothing is waiting to be sent."
 
