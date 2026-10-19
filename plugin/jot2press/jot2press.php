@@ -905,7 +905,8 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 		}
 
 		// The stored extension follows the detected type, whatever name the client sent.
-		$_FILES['photo']['name'] = 'photo.' . JOT2PRESS_PHOTO_TYPES[ $detected ][0];
+		$extension               = JOT2PRESS_PHOTO_TYPES[ $detected ][0];
+		$_FILES['photo']['name'] = 'photo.' . $extension;
 
 		add_filter( 'upload_dir', 'jot2press_upload_dir' );
 		try {
@@ -923,11 +924,7 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 				),
 				array(
 					'test_form'                => false,
-					'mimes'                    => array(
-						'jpg|jpeg|jpe' => 'image/jpeg',
-						'png'          => 'image/png',
-						'webp'         => 'image/webp',
-					),
+					'mimes'                    => array( $extension => $detected ),
 					'unique_filename_callback' => 'jot2press_random_filename',
 				)
 			);
