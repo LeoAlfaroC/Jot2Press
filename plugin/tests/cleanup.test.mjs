@@ -108,6 +108,23 @@ test( "the photos of a day's post deleted permanently are cleaned up", async () 
 	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
 } );
 
+test( 'the photos of a day post in the trash are kept, attached to it or not, since the post can be restored', async () => {
+	const attached = await uploadPhoto();
+	const loose = await uploadPhoto();
+	for ( const photo of [ attached, loose ] ) {
+		const sent = await sendEntry( { id: uuid(), written_at: at( day(), '10:00:00' ), photo_ids: [ photo.id ] } );
+		backdate( photo.body.attachment_id );
+		wp( 'post', 'delete', String( sent.body.post_id ) );
+	}
+	// Shown only by the trashed post's content.
+	wp( 'post', 'update', String( loose.body.attachment_id ), '--post_parent=0' );
+
+	runCleanup();
+
+	assert.equal( await mediaStatus( attached.body.attachment_id ), 200 );
+	assert.equal( await mediaStatus( loose.body.attachment_id ), 200 );
+} );
+
 test( "a photo that is a post's featured image is kept", async () => {
 	const photo = await uploadPhoto();
 	const url = ( await readMedia( photo.body.attachment_id ) ).source_url;

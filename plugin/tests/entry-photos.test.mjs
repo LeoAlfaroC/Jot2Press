@@ -55,6 +55,41 @@ test( 'an entry with three photos attaches them and shows them in the given orde
 	);
 } );
 
+test( 'the photos and place of an account whose posts WordPress filters keep their markup, entry after entry', async () => {
+	// An author has no unfiltered_html: every write of the post passes all of its content through kses again.
+	const d = day();
+	const uploads = [];
+	for ( const file of [ 'photo.jpg', 'photo.png', 'photo.webp' ] ) {
+		uploads.push( await uploadPhoto( { file, who: 'author' } ) );
+	}
+	const [ first, second ] = [ uuid(), uuid() ];
+	const sent = await sendEntry(
+		{
+			id: first,
+			written_at: at( d, '18:05:00' ),
+			text: 'Walk on the pier.',
+			location: { lat: 40.4168, lng: -3.7038 },
+			photo_ids: uploads.map( ( upload ) => upload.id ),
+		},
+		{ who: 'author' }
+	);
+	assert.equal( sent.status, 201 );
+	const again = await sendEntry( { id: second, written_at: at( d, '19:00:00' ), text: 'Home.' }, { who: 'author' } );
+	assert.equal( again.status, 201 );
+
+	const media = [];
+	for ( const upload of uploads ) {
+		media.push( await readMedia( upload.body.attachment_id ) );
+	}
+	const post = await readPost( sent.body.post_id );
+	// kses writes "<img ... />" for "<img .../>"; the block editor reads both as the same tag, so the blocks stay valid.
+	assert.equal(
+		post.content.raw.replaceAll( '" />', '"/>' ),
+		paragraph( first, '18:05', 'Walk on the pier.', place( '40.41680', '-3.70380' ) ) + '\n\n' + photoGrid( ...media ) +
+			'\n\n' + paragraph( second, '19:00', 'Home.' )
+	);
+} );
+
 test( 'an entry with a photo and no text shows only the time above the image', async () => {
 	const d = day();
 	const upload = await uploadPhoto();
