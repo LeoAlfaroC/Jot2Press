@@ -522,13 +522,9 @@ function jot2press_store_entry( array $entry, ?WP_Term &$fallback = null ) {
 		}
 	}
 
-	// The text is written only once every photo is attached to the day's post and has an image to show: the cleanup
-	// deletes old photos attached to nothing that no post shows, so a post must never show a photo that is not attached.
-	foreach ( $entry['attachments'] as $attachment_id ) {
-		if ( ! wp_get_attachment_image_url( $attachment_id, 'large' ) ) {
-			return new WP_Error( 'jot2press_photo_missing', 'Photo ' . $attachment_id . ' has no image to show.' );
-		}
-	}
+	// The text is written only once every photo is attached to the day's post (jot2press_resolve_photos made sure each
+	// has an image to show): the cleanup deletes old photos attached to nothing that no post shows, so a post must never
+	// show a photo that is not attached.
 	foreach ( $entry['attachments'] as $attachment_id ) {
 		$attached = wp_update_post(
 			array(
