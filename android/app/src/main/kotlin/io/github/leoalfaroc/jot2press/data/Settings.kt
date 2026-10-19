@@ -42,6 +42,12 @@ data class SiteStatus(
     val photoTypes: Set<String>? = null,
 )
 
+/** An upload limit such as `67108864` as `64 MB`; one decimal when it is not a whole number of megabytes. */
+fun megabytes(bytes: Long): String {
+    val tenths = bytes * 10 / (1024 * 1024)
+    return if (tenths % 10 == 0L) "${tenths / 10} MB" else "${tenths / 10}.${tenths % 10} MB"
+}
+
 /** The chosen category disappeared from the site: `missing` was chosen, day posts now go to `used`. Both are names. */
 data class CategoryNotice(val missing: String, val used: String)
 

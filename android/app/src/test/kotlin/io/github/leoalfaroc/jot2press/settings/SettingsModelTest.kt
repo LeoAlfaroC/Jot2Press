@@ -9,6 +9,7 @@ import io.github.leoalfaroc.jot2press.data.Category
 import io.github.leoalfaroc.jot2press.data.CategoryNotice
 import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.PostStatus
+import io.github.leoalfaroc.jot2press.data.megabytes
 import io.github.leoalfaroc.jot2press.location.Permission
 import io.github.leoalfaroc.jot2press.send.Scheduler
 import io.github.leoalfaroc.jot2press.send.Sender

@@ -8,6 +8,7 @@ import io.github.leoalfaroc.jot2press.data.MAX_GRACE_SECONDS
 import io.github.leoalfaroc.jot2press.data.PostStatus
 import io.github.leoalfaroc.jot2press.data.Settings
 import io.github.leoalfaroc.jot2press.data.SiteStatus
+import io.github.leoalfaroc.jot2press.data.megabytes
 import io.github.leoalfaroc.jot2press.data.normalizeSiteUrl
 import io.github.leoalfaroc.jot2press.location.Permission
 import io.github.leoalfaroc.jot2press.net.ApiResult
@@ -239,10 +240,4 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
     }
 
     private fun failed(message: String) = form.update { it.copy(test = TestState.Failed(message)) }
-}
-
-/** `67108864` as `64 MB`; one decimal when it is not a whole number of megabytes. */
-fun megabytes(bytes: Long): String {
-    val tenths = bytes * 10 / (1024 * 1024)
-    return if (tenths % 10 == 0L) "${tenths / 10} MB" else "${tenths / 10}.${tenths % 10} MB"
 }

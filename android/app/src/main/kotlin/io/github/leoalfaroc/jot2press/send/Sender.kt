@@ -13,11 +13,11 @@ import io.github.leoalfaroc.jot2press.data.SettingsStore
 import io.github.leoalfaroc.jot2press.data.SiteStatus
 import io.github.leoalfaroc.jot2press.data.UNKNOWN_PHOTO
 import io.github.leoalfaroc.jot2press.data.day
+import io.github.leoalfaroc.jot2press.data.megabytes
 import io.github.leoalfaroc.jot2press.net.ApiResult
 import io.github.leoalfaroc.jot2press.net.Coordinates
 import io.github.leoalfaroc.jot2press.net.EntryPayload
 import io.github.leoalfaroc.jot2press.net.Jot2PressApi
-import io.github.leoalfaroc.jot2press.settings.megabytes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
