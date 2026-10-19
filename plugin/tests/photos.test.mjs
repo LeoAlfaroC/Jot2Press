@@ -79,6 +79,27 @@ test( 'files that are not JPEG, PNG or WebP are rejected', async () => {
 	}
 } );
 
+test( 'a photo of a type the site does not accept is refused with a code of its own', () => {
+	const bytes = fixture( 'photo.webp' ).toString( 'base64' );
+	const php = `
+		add_filter( 'upload_mimes', function ( $mimes ) { unset( $mimes['webp'] ); return $mimes; } );
+		$tmp = wp_tempnam( 'journal-test' );
+		file_put_contents( $tmp, base64_decode( '${ bytes }' ) );
+		$files = array( 'photo' => array( 'name' => 'photo.webp', 'type' => 'image/webp', 'tmp_name' => $tmp, 'error' => 0, 'size' => filesize( $tmp ) ) );
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$request = new WP_REST_Request( 'POST', '/jot2press/v1/photos' );
+		$request->set_body_params( array( 'id' => '${ uuid() }' ) );
+		$request->set_file_params( $files );
+		$response = rest_do_request( $request );
+		echo 'RESULT:' . wp_json_encode( array( $response->get_status(), $response->get_data() ) ) . ':END';
+		unlink( $tmp );
+	`;
+	const [ status, body ] = JSON.parse( wp( 'eval', php ).match( /RESULT:(.*):END/s )[ 1 ] );
+	assert.equal( status, 400 );
+	assert.equal( body.code, 'photo_type_not_allowed' );
+	assert.equal( body.message, 'This site does not accept WebP photos.' );
+} );
+
 test( 'a PNG sent under a .jpg name is stored as a PNG', async () => {
 	const { status, body } = await uploadPhoto( { file: 'photo.png', name: 'photo.jpg' } );
 	assert.equal( status, 201 );

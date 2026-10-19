@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { api } from './helpers.mjs';
+import { api, wp } from './helpers.mjs';
 
 test( 'status reports the user, the default category, the upload limit and the version', async () => {
 	const { status, body } = await api( 'GET', '/jot2press/v1/status' );
@@ -10,6 +10,18 @@ test( 'status reports the user, the default category, the upload limit and the v
 	assert.deepEqual( body.category, { slug: 'journal', name: 'Journal' } );
 	assert.ok( Number.isInteger( body.max_upload_bytes ) && body.max_upload_bytes > 0 );
 	assert.equal( body.version, '1.0.0' );
+	assert.deepEqual( body.photo_types, [ 'image/jpeg', 'image/png', 'image/webp' ] );
+} );
+
+test( 'status lists only the photo types the site accepts', () => {
+	// A security plugin, or a network created before WebP was allowed, can take WebP off the list.
+	const php = `
+		add_filter( 'upload_mimes', function ( $mimes ) { unset( $mimes['webp'] ); return $mimes; } );
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$response = rest_do_request( new WP_REST_Request( 'GET', '/jot2press/v1/status' ) );
+		echo 'RESULT:' . wp_json_encode( $response->get_data()['photo_types'] ) . ':END';
+	`;
+	assert.deepEqual( JSON.parse( wp( 'eval', php ).match( /RESULT:(.*):END/s )[ 1 ] ), [ 'image/jpeg', 'image/png' ] );
 } );
 
 test( 'status lists every category of the site by name, used or not', async () => {

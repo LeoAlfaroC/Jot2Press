@@ -96,7 +96,7 @@ To try another category or status, add `"category":"a-category-slug"` or `"post_
 
 | Route | Purpose |
 |---|---|
-| `GET /wp-json/jot2press/v1/status` | Confirms credentials; reports the upload limit, the default category and every category of the site |
+| `GET /wp-json/jot2press/v1/status` | Confirms credentials; reports the upload limit, the photo types the site accepts, the default category and every category of the site |
 | `POST /wp-json/jot2press/v1/photos` | Uploads one photo (`multipart/form-data`: `id`, `photo`) |
 | `POST /wp-json/jot2press/v1/entries` | Appends an entry (JSON: `id`, `written_at`, `text`, `photo_ids`, `title`, `category`, `post_status`, `location`) |
 

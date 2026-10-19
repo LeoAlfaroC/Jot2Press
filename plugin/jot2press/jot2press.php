@@ -143,6 +143,18 @@ function jot2press_categories(): array {
 	return is_wp_error( $terms ) ? array() : array_map( 'jot2press_category_summary', array_values( $terms ) );
 }
 
+/** The photo types this plugin stores, by MIME type, with the extension each is stored under and its name. */
+const JOT2PRESS_PHOTO_TYPES = array(
+	'image/jpeg' => array( 'jpg', 'JPEG' ),
+	'image/png'  => array( 'png', 'PNG' ),
+	'image/webp' => array( 'webp', 'WebP' ),
+);
+
+/** The photo types the site lets this account upload: the plugin's own, less any the site has taken off its list. */
+function jot2press_accepted_photo_types(): array {
+	return array_values( array_intersect( array_keys( JOT2PRESS_PHOTO_TYPES ), get_allowed_mime_types() ) );
+}
+
 function jot2press_handle_status() {
 	// Asked for first, so that the default category exists before the categories are listed.
 	$category = jot2press_category();
@@ -156,6 +168,8 @@ function jot2press_handle_status() {
 			'category'         => jot2press_category_summary( $category ),
 			'categories'       => jot2press_categories(),
 			'max_upload_bytes' => (int) wp_max_upload_size(),
+			// The app turns any other photo into a JPEG before sending it.
+			'photo_types'      => jot2press_accepted_photo_types(),
 			'version'          => JOT2PRESS_VERSION,
 		),
 		200
@@ -802,14 +816,12 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 	}
 
 	// The handler decides what is a photo from the file's own bytes, never from its name or claimed type.
-	$types    = array(
-		'image/jpeg' => 'jpg',
-		'image/png'  => 'png',
-		'image/webp' => 'webp',
-	);
 	$detected = wp_get_image_mime( $files['photo']['tmp_name'] );
-	if ( ! $detected || ! isset( $types[ $detected ] ) || ! in_array( $detected, get_allowed_mime_types(), true ) ) {
+	if ( ! $detected || ! isset( JOT2PRESS_PHOTO_TYPES[ $detected ] ) ) {
 		return jot2press_error( 'invalid_photo', 'The file is not a JPEG, PNG or WebP photo.', 400 );
+	}
+	if ( ! in_array( $detected, jot2press_accepted_photo_types(), true ) ) {
+		return jot2press_error( 'photo_type_not_allowed', 'This site does not accept ' . JOT2PRESS_PHOTO_TYPES[ $detected ][1] . ' photos.', 400 );
 	}
 
 	require_once ABSPATH . 'wp-admin/includes/file.php';
@@ -831,7 +843,7 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 		}
 
 		// The stored extension follows the detected type, whatever name the client sent.
-		$_FILES['photo']['name'] = 'photo.' . $types[ $detected ];
+		$_FILES['photo']['name'] = 'photo.' . JOT2PRESS_PHOTO_TYPES[ $detected ][0];
 
 		add_filter( 'upload_dir', 'jot2press_upload_dir' );
 		try {
