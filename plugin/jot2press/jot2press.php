@@ -65,6 +65,12 @@ function jot2press_is_id( $value ): bool {
 	return is_string( $value ) && 36 === strlen( $value ) && wp_is_uuid( $value );
 }
 
+/** An id as a request sent it, lowercased; '' when the value is not an id. */
+function jot2press_read_id( $value ): string {
+	$id = is_string( $value ) ? strtolower( $value ) : '';
+	return jot2press_is_id( $id ) ? $id : '';
+}
+
 function jot2press_can_publish(): bool {
 	return current_user_can( 'publish_posts' );
 }
@@ -228,9 +234,8 @@ function jot2press_parse_location( $value ) {
  * @return array|WP_Error Keys: id, written, day, text, title, category, post_status, location, photo_ids.
  */
 function jot2press_validate_entry( WP_REST_Request $request ) {
-	$id = $request->get_param( 'id' );
-	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! jot2press_is_id( $id ) ) {
+	$id = jot2press_read_id( $request->get_param( 'id' ) );
+	if ( '' === $id ) {
 		return jot2press_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
@@ -275,14 +280,11 @@ function jot2press_validate_entry( WP_REST_Request $request ) {
 		return jot2press_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
 	}
 	if ( count( $photo_ids ) > JOT2PRESS_MAX_PHOTOS ) {
-		return jot2press_error( 'too_many_photos', 'An entry can have at most 10 photos.', 400 );
+		return jot2press_error( 'too_many_photos', 'An entry can have at most ' . JOT2PRESS_MAX_PHOTOS . ' photos.', 400 );
 	}
-	foreach ( $photo_ids as $index => $photo_id ) {
-		$photo_id = is_string( $photo_id ) ? strtolower( $photo_id ) : '';
-		if ( ! jot2press_is_id( $photo_id ) ) {
-			return jot2press_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
-		}
-		$photo_ids[ $index ] = $photo_id;
+	$photo_ids = array_map( 'jot2press_read_id', $photo_ids );
+	if ( in_array( '', $photo_ids, true ) ) {
+		return jot2press_error( 'invalid_photo_ids', 'photo_ids must be a list of photo ids.', 400 );
 	}
 
 	if ( '' === $text && ! $photo_ids ) {
@@ -822,9 +824,8 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 		return jot2press_error( 'photo_too_large', 'The upload exceeds the server limit.', 413 );
 	}
 
-	$id = $request->get_param( 'id' );
-	$id = is_string( $id ) ? strtolower( $id ) : '';
-	if ( ! jot2press_is_id( $id ) ) {
+	$id = jot2press_read_id( $request->get_param( 'id' ) );
+	if ( '' === $id ) {
 		return jot2press_error( 'invalid_id', 'id must be a UUID.', 400 );
 	}
 
