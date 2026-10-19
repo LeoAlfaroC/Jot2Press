@@ -47,6 +47,7 @@ enum class Verdict {
  * would get the same answer and hold every entry behind it.
  */
 fun verdict(refused: ApiResult.Refused): Verdict = when {
+    refused.status == 403 && refused.code in ENTRY_REFUSALS -> Verdict.REJECTED
     refused.status == 401 || refused.status == 403 -> Verdict.AUTH
     refused.status == 413 -> Verdict.REJECTED
     refused.status in 400..499 && refused.status != 408 && refused.status != 429 &&
@@ -55,6 +56,9 @@ fun verdict(refused: ApiResult.Refused): Verdict = when {
 }
 
 private const val NO_ROUTE = "rest_no_route"
+
+/** The plugin's 403s about one entry: the account may publish, but not upload its photos or edit its day's post. */
+private val ENTRY_REFUSALS = setOf("cannot_upload_photos", "cannot_edit_day_post")
 
 /** Sends the pending entries, one at a time, oldest first. */
 class Sender(

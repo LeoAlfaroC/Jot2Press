@@ -558,6 +558,22 @@ class SenderTest {
     }
 
     @Test
+    fun `an entry the account may not send fails alone, and the next one goes`() = runTest {
+        val refused = pending("With photos")
+        val next = pending("Text only")
+        wordPressError(403, "cannot_edit_day_post", "This account may not edit the day's post any more.")
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        val failed = stored(refused.id)!!
+        assertEquals(EntryState.FAILED, failed.state)
+        assertEquals("This account may not edit the day's post any more.", failed.lastError)
+        assertNull(stored(next.id))
+        assertFalse(settings.get().authError)
+    }
+
+    @Test
     fun `only a 4xx with an error code is a verdict on the entry`() {
         fun refused(status: Int, code: String?) = verdict(io.github.leoalfaroc.jot2press.net.ApiResult.Refused(status, code, "message"))
 
@@ -567,6 +583,10 @@ class SenderTest {
         assertEquals(Verdict.REJECTED, refused(413, null))
         assertEquals(Verdict.AUTH, refused(401, "rest_not_logged_in"))
         assertEquals(Verdict.AUTH, refused(403, null))
+        assertEquals(Verdict.AUTH, refused(403, "rest_forbidden"))
+        // The plugin's own refusals of one entry: the account may publish, but not do what this entry needs.
+        assertEquals(Verdict.REJECTED, refused(403, "cannot_upload_photos"))
+        assertEquals(Verdict.REJECTED, refused(403, "cannot_edit_day_post"))
         for ((status, code) in listOf(500 to "jot2press_failure", 503 to "jot2press_busy", 404 to "rest_no_route", 404 to null, 408 to "timeout", 429 to "slow_down", 301 to null, 200 to null)) {
             assertEquals("$status $code", Verdict.SERVER_FAULT, refused(status, code))
         }
