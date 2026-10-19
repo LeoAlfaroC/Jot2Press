@@ -63,6 +63,8 @@ data class Settings(
     val configured: Boolean = false,
     /** The site rejected the credentials; nothing is sent until others are saved or a `Test connection` of these succeeds. */
     val authError: Boolean = false,
+    /** Goes up at every Save: a rejection is recorded only for the credentials it was read with. */
+    val credentialsVersion: Long = 0,
     val categoryNotice: CategoryNotice? = null,
     /** `Attach location` as stored. It shows on only while a location permission is held too. */
     val attachLocation: Boolean = false,
@@ -89,6 +91,21 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun setUploadRules(status: SiteStatus) = change { it.uploadRules(status) }
     suspend fun setAuthError(on: Boolean) = change { it[AUTH_ERROR] = on }
 
+    /**
+     * The site rejected the credentials of [version]. Nothing is recorded once Save has stored others since: in the
+     * same edit, so that a Save in between cannot have its new credentials marked as rejected.
+     */
+    suspend fun credentialsRejected(version: Long): Boolean {
+        var recorded = false
+        change { p ->
+            if ((p[CREDENTIALS_VERSION] ?: 0) == version) {
+                p[AUTH_ERROR] = true
+                recorded = true
+            }
+        }
+        return recorded
+    }
+
     /** Turning it on turns the dialog's pin on too. */
     suspend fun setAttachLocation(on: Boolean) = change {
         it[ATTACH_LOCATION] = on
@@ -109,6 +126,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun credentialsSaved() = change { p ->
         p[CONFIGURED] = true
         p[AUTH_ERROR] = false
+        p[CREDENTIALS_VERSION] = (p[CREDENTIALS_VERSION] ?: 0) + 1
         // The limit and the types are the site's: these credentials may be for another one. A tested connection
         // stores its own next.
         p.remove(MAX_UPLOAD)
@@ -180,6 +198,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
             photoTypes = p[PHOTO_TYPES],
             configured = p[CONFIGURED] ?: false,
             authError = p[AUTH_ERROR] ?: false,
+            credentialsVersion = p[CREDENTIALS_VERSION] ?: 0,
             categoryNotice = if (missing != null && used != null) CategoryNotice(missing, used) else null,
             attachLocation = p[ATTACH_LOCATION] ?: false,
             pinOn = p[PIN_ON] ?: false,
@@ -215,6 +234,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         private val PHOTO_TYPES = stringSetPreferencesKey("photo_types")
         private val CONFIGURED = booleanPreferencesKey("configured")
         private val AUTH_ERROR = booleanPreferencesKey("auth_error")
+        private val CREDENTIALS_VERSION = longPreferencesKey("credentials_version")
         private val NOTICE_MISSING = stringPreferencesKey("category_notice_missing")
         private val NOTICE_USED = stringPreferencesKey("category_notice_used")
         private val ATTACH_LOCATION = booleanPreferencesKey("attach_location")

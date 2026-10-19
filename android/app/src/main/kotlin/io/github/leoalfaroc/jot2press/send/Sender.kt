@@ -112,9 +112,16 @@ class Sender(
      * the user fixes it the same way as a rejected sign-in, by saving them again.
      */
     private suspend fun unreadable(): Outcome {
-        if (settings.get().configured) settings.setAuthError(true)
+        if (settings.get().configured) settings.credentialsRejected(version)
         return Outcome.HELD
     }
+
+    /**
+     * The `credentialsVersion` read just before the credentials the current entry is sent with. Read before them, so
+     * that a Save that stores new ones after it moves the version on, and their rejection is not recorded against them.
+     * Only `run` sets it, one at a time.
+     */
+    private var version = 0L
 
     suspend fun run(): Outcome = oneAtATime.withLock { drain() }
 
@@ -130,7 +137,9 @@ class Sender(
         val reuploaded = mutableSetOf<String>()
         while (true) {
             // Read again for every entry: `Save` may have stored other credentials since the last one.
-            if (settings.get().authError) return Outcome.HELD
+            val current = settings.get()
+            if (current.authError) return Outcome.HELD
+            version = current.credentialsVersion
             val signIn = credentials() ?: return unreadable()
             queue.promoteDue()
             val entry = claim.withLock { queue.nextPending()?.also { inFlight.value = it.id } } ?: return Outcome.DONE
@@ -250,13 +259,12 @@ class Sender(
     private suspend fun refused(result: ApiResult.Refused, signIn: Credentials, entry: Entry, message: String = result.message): Step =
         when (verdict(result)) {
             Verdict.AUTH -> {
-                // Credentials replaced while the request was on its way are not the ones that were rejected:
-                // the entry is tried again with them.
-                if (credentials() != signIn) {
+                // Credentials replaced while the request was on its way, or while the rejection is being recorded,
+                // are not the ones that were rejected: the entry is tried again with them.
+                if (credentials() != signIn || !settings.credentialsRejected(version)) {
                     Step.Again
                 } else {
                     queue.clearServerError(entry.id)
-                    settings.setAuthError(true)
                     Step.Stop(Outcome.HELD)
                 }
             }

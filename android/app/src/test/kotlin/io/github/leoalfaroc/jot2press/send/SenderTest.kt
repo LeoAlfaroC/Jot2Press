@@ -63,6 +63,8 @@ class SenderTest {
     private var saved: Credentials? = null
     /** Runs when a request is about to leave, after the sender has read the credentials for it. */
     private var whileSending: () -> Unit = {}
+    /** Runs each time the sender reads the credentials, after it has read them. */
+    private var afterReading: suspend () -> Unit = {}
     /** Replaced by a test that needs preparing a photo to fail. */
     private var prepare: (java.io.File, Long, Set<String>) -> Prepared =
         { source, limit, accepted -> PhotoEncoder(folder.newFolder("cache-${++caches}")).prepare(source, limit, accepted) }
@@ -71,7 +73,7 @@ class SenderTest {
     private var online = false
     private val sender by lazy {
         saved = signIn
-        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit, accepted -> prepare(source, limit, accepted) }, deviceLocale = { Locale.FRENCH }, networkUp = { online })
+        Sender(queue, settings, credentials = { saved.also { afterReading() } }, apiFor = ::api, files = files, prepare = { source, limit, accepted -> prepare(source, limit, accepted) }, deviceLocale = { Locale.FRENCH }, networkUp = { online })
     }
 
     private fun api(signIn: Credentials): Jot2PressApi {
@@ -621,6 +623,29 @@ class SenderTest {
         whileSending = {
             whileSending = {}
             saved = renewed
+        }
+        wordPressError(401, "incorrect_password", "The provided password is an invalid application password.")
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertFalse(settings.get().authError)
+        assertNull(stored(entry.id))
+        val passwords = List(2) { server.takeRequest().headers["Authorization"] }
+        assertEquals(listOf(basic(signIn), basic(renewed)), passwords)
+    }
+
+    @Test
+    fun `a rejection being recorded while Save stores new credentials is not held against them`() = runTest {
+        // The sender has read the rejected credentials again, and Save stores new ones before it records the rejection.
+        val entry = pending("Coffee")
+        val renewed = signIn.copy(password = "wxyz")
+        var reads = 0
+        afterReading = {
+            if (++reads == 2) {
+                saved = renewed
+                settings.credentialsSaved()
+            }
         }
         wordPressError(401, "incorrect_password", "The provided password is an invalid application password.")
         created()
