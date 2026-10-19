@@ -181,6 +181,12 @@ test( 'photo uploads need credentials and the right to publish', async () => {
 	assert.equal( ( await uploadPhoto( { who: 'reader' } ) ).status, 403 );
 } );
 
+test( 'photo uploads need the right to upload files, refused with a code of their own', async () => {
+	const { status, body } = await uploadPhoto( { who: 'nouploads' } );
+	assert.equal( status, 403 );
+	assert.equal( body.code, 'cannot_upload_photos' );
+} );
+
 test( 'a visitor cannot find an unattached photo through WordPress', async () => {
 	const { body } = await uploadPhoto();
 	const id = body.attachment_id;

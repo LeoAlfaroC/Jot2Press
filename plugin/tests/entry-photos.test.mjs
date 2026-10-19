@@ -254,6 +254,26 @@ test( 'a public day post is not public until its first entry is in it', async ()
 	assert.ok( post.content.raw.includes( fields.text ) );
 } );
 
+test( 'an account that may not upload files cannot send an entry with photos, and can still send text', async () => {
+	const d = day();
+	const upload = await uploadPhoto();
+	const withPhoto = await sendEntry( { id: uuid(), written_at: at( d, '12:00:00' ), text: 'With a photo.', photo_ids: [ upload.id ] }, { who: 'nouploads' } );
+	assert.equal( withPhoto.status, 403 );
+	assert.equal( withPhoto.body.code, 'cannot_upload_photos' );
+	assert.equal( ( await readMedia( upload.body.attachment_id ) ).post, null );
+
+	const text = await sendEntry( { id: uuid(), written_at: at( d, '12:01:00' ), text: 'Text only.' }, { who: 'nouploads' } );
+	assert.equal( text.status, 201 );
+} );
+
+test( "a photo is found only by the account that uploaded it", async () => {
+	const upload = await uploadPhoto();
+	const { status, body } = await sendEntry( { id: uuid(), written_at: at( day(), '12:30:00' ), photo_ids: [ upload.id ] }, { who: 'author' } );
+	assert.equal( status, 400 );
+	assert.equal( body.code, 'unknown_photo' );
+	assert.equal( ( await readMedia( upload.body.attachment_id ) ).post, null );
+} );
+
 test( 'a repeated entry is answered as a duplicate even after its photo was deleted', async () => {
 	const upload = await uploadPhoto();
 	const fields = { id: uuid(), written_at: at( day(), '12:00:00' ), text: 'Stored once.', photo_ids: [ upload.id ] };

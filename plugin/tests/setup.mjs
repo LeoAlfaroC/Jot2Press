@@ -44,6 +44,13 @@ if ( leftovers.length ) {
 tryWp( 'user', 'create', 'reader', 'reader@example.com', '--role=subscriber' );
 // A second account that can publish, to show that each account keeps its own journal.
 tryWp( 'user', 'create', 'author', 'author@example.com', '--role=author' );
+// Authors whose site took away one right: uploading files, or editing their posts once published.
+tryWp( 'role', 'create', 'no_uploads', 'No uploads', '--clone=author' );
+tryWp( 'cap', 'remove', 'no_uploads', 'upload_files' );
+tryWp( 'user', 'create', 'nouploads', 'nouploads@example.com', '--role=no_uploads' );
+tryWp( 'role', 'create', 'frozen', 'Frozen', '--clone=author' );
+tryWp( 'cap', 'remove', 'frozen', 'edit_published_posts' );
+tryWp( 'user', 'create', 'frozen', 'frozen@example.com', '--role=frozen' );
 // Categories the tests rely on: one that entries are filed under, and one that no post ever uses.
 tryWp( 'term', 'create', 'category', 'Travel', '--slug=travel' );
 tryWp( 'term', 'create', 'category', 'Tea & Cake', '--slug=tea-cake' );
@@ -59,6 +66,8 @@ writeFileSync(
 			admin: { user: 'admin', password: applicationPassword( 'admin' ) },
 			reader: { user: 'reader', password: applicationPassword( 'reader' ) },
 			author: { user: 'author', password: applicationPassword( 'author' ) },
+			nouploads: { user: 'nouploads', password: applicationPassword( 'nouploads' ) },
+			frozen: { user: 'frozen', password: applicationPassword( 'frozen' ) },
 			wrong: { user: 'admin', password: 'wrong-wrong-wrong-wrong' },
 		},
 		null,

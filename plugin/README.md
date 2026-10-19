@@ -32,6 +32,8 @@ Once a day the site deletes journal photos that no post shows and that are attac
 
 Each account that can publish keeps its own day posts: an entry is added to the post of the account that sent it, never to another account's post for the same day.
 
+The app's account needs the rights WordPress itself asks for: to publish posts, to upload files for photos, and to edit its own published posts for the entries that follow the first on a public day. Without one of the last two, the entries that need it are refused (`cannot_upload_photos`, `cannot_edit_day_post`) and the app shows them as failed; the others still go. Photos, like day posts, belong to the account that uploaded them.
+
 Each entry leaves a revision of the day's post, and WordPress keeps at most 30 for a day post (fewer if the site is set to keep fewer). They are where to look if an entry disappears because the post was open in an editor while the entry arrived: wp-admin → the post → Revisions.
 
 An entry's photos show below its line as square tiles, three to a row on every screen, so that a lone photo is the size of any other; a tap opens the whole photo in WordPress's own viewer. They are ordinary Group and Image blocks, editable in the block editor. Posts written before this layout keep their photos one under the other.

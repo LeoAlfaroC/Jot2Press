@@ -64,6 +64,14 @@ function jot2press_can_publish(): bool {
 }
 
 /**
+ * The refusal for an account that may publish but not upload files. 403 like WordPress's own, with a code of its own:
+ * the app reads a bare 403 as rejected credentials and holds every entry, where this refuses only entries with photos.
+ */
+function jot2press_cannot_upload(): WP_Error {
+	return jot2press_error( 'cannot_upload_photos', 'This account may not upload files to the site, so it cannot send photos.', 403 );
+}
+
+/**
  * Returns the default category, creating it if it does not exist.
  *
  * @return WP_Term|WP_Error
@@ -468,6 +476,16 @@ function jot2press_store_entry( array $entry, ?WP_Term &$fallback = null ) {
 		}
 	}
 
+	// Checked before anything changes: a refusal leaves the post and the photos as they were.
+	if ( ! current_user_can( 'edit_post', $post_id ) ) {
+		return jot2press_error( 'cannot_edit_day_post', "This account may not edit the day's post any more, so the entry cannot be added to it.", 403 );
+	}
+	foreach ( $entry['attachments'] as $attachment_id ) {
+		if ( ! current_user_can( 'edit_post', $attachment_id ) ) {
+			return jot2press_cannot_upload();
+		}
+	}
+
 	// The text is written only once every photo is attached to the day's post and has an image to show: the cleanup
 	// deletes old photos attached to nothing that no post shows, so a post must never show a photo that is not attached.
 	foreach ( $entry['attachments'] as $attachment_id ) {
@@ -524,6 +542,10 @@ function jot2press_handle_entry( WP_REST_Request $request ) {
 		return jot2press_duplicate_response( $existing );
 	}
 
+	if ( $entry['photo_ids'] && ! current_user_can( 'upload_files' ) ) {
+		return jot2press_cannot_upload();
+	}
+
 	if ( ! jot2press_lock( $entry['day'] ) ) {
 		return jot2press_error( 'jot2press_busy', 'Another entry for this day is being stored. Try again.', 503 );
 	}
@@ -551,6 +573,11 @@ function jot2press_handle_entry( WP_REST_Request $request ) {
 	}
 
 	if ( is_wp_error( $post_id ) ) {
+		// A refusal of this plugin's own carries its status; any other failure is the server's.
+		$data = $post_id->get_error_data();
+		if ( is_array( $data ) && isset( $data['status'] ) ) {
+			return $post_id;
+		}
 		return jot2press_error( 'jot2press_failure', $post_id->get_error_message(), 500 );
 	}
 
@@ -658,12 +685,16 @@ function jot2press_resolve_photos( array $photo_ids ) {
 	return $attachment_ids;
 }
 
-/** Returns the attachment id of an uploaded journal photo, or 0 if the id is unknown. */
+/**
+ * Returns the attachment id of a journal photo the current user uploaded, or 0 if the id is unknown to them.
+ * Another account's photo is never found, as its day posts are not.
+ */
 function jot2press_find_photo( string $id ): int {
 	$ids = get_posts(
 		array(
 			'post_type'     => 'attachment',
 			'post_status'   => array( 'private', 'inherit' ),
+			'author'        => get_current_user_id(),
 			'meta_key'      => '_journal_photo_id',
 			'meta_value'    => $id,
 			'numberposts'   => 1,
@@ -722,6 +753,10 @@ function jot2press_protect_dirs( string $dir ): void {
 }
 
 function jot2press_handle_photo( WP_REST_Request $request ) {
+	if ( ! current_user_can( 'upload_files' ) ) {
+		return jot2press_cannot_upload();
+	}
+
 	// A body larger than PHP's post_max_size arrives with no fields and no files at all.
 	if ( empty( $_POST ) && empty( $_FILES ) && (int) ( $_SERVER['CONTENT_LENGTH'] ?? 0 ) > 0 ) {
 		return jot2press_error( 'photo_too_large', 'The upload exceeds the server limit.', 413 );

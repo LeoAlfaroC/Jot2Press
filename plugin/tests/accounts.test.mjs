@@ -36,3 +36,18 @@ test( 'a second entry from the same account still lands in that account\'s post'
 	const b = await sendEntry( { id: uuid(), written_at: at( d, '10:00:00' ), text: 'Two.' }, { who: 'author' } );
 	assert.equal( b.body.post_id, a.body.post_id );
 } );
+
+test( 'an account that may not edit its published posts starts a public day, and is refused what would change it', async () => {
+	const d = day();
+	const first = await sendEntry( { id: uuid(), written_at: at( d, '09:00:00' ), text: 'First, public.', post_status: 'publish' }, { who: 'frozen' } );
+	assert.equal( first.status, 201 );
+
+	const second = await sendEntry( { id: uuid(), written_at: at( d, '10:00:00' ), text: 'Second.' }, { who: 'frozen' } );
+	assert.equal( second.status, 403 );
+	assert.equal( second.body.code, 'cannot_edit_day_post' );
+
+	const post = await readPost( first.body.post_id );
+	assert.equal( post.status, 'publish' );
+	assert.ok( post.content.raw.includes( 'First, public.' ) );
+	assert.ok( ! post.content.raw.includes( 'Second.' ) );
+} );

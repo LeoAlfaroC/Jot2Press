@@ -9,7 +9,11 @@ const credentials = JSON.parse( readFileSync( new URL( './.credentials.json', im
 export const BASE = credentials.base;
 export const uuid = randomUUID;
 
-/** Authorization header for 'admin', 'author' (a second account that can publish), 'reader' (a subscriber) or 'wrong'; none for 'anonymous'. */
+/**
+ * Authorization header for 'admin', 'author' (a second account that can publish), 'nouploads' (an author who may not
+ * upload files), 'frozen' (an author who may not edit published posts), 'reader' (a subscriber) or 'wrong';
+ * none for 'anonymous'.
+ */
 export function authHeader( who = 'admin' ) {
 	if ( who === 'anonymous' ) {
 		return {};
