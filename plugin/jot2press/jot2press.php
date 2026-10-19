@@ -350,6 +350,13 @@ function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?st
 		$title = $day . ' · ' . $written->format( 'l, F j' );
 	}
 
+	// A phone whose clock runs fast would have WordPress schedule a public post rather than publish it: such a post is
+	// dated now instead, on the phone's wall clock.
+	$dated = $written;
+	if ( 'publish' === $status && $written->getTimestamp() > time() ) {
+		$dated = ( new DateTimeImmutable( '@' . time() ) )->setTimezone( $written->getTimezone() );
+	}
+
 	return wp_insert_post(
 		wp_slash(
 			array(
@@ -361,8 +368,8 @@ function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?st
 				// The date is the phone's wall clock; the GMT date is the real moment. Giving both keeps a draft's
 				// date from moving to the day it is published, and keeps a public post from being scheduled
 				// when the phone's clock is ahead of the site's.
-				'post_date'     => $written->format( 'Y-m-d H:i:s' ),
-				'post_date_gmt' => $written->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' ),
+				'post_date'     => $dated->format( 'Y-m-d H:i:s' ),
+				'post_date_gmt' => $dated->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' ),
 				'post_category' => array( $category->term_id ),
 				'meta_input'    => array(
 					'_journal_date'   => $day,

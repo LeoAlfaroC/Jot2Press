@@ -312,6 +312,24 @@ test( 'a public post written from a phone ahead of the site clock is published a
 	assert.equal( post.date, written_at.slice( 0, 19 ) );
 } );
 
+test( 'a public post from a phone whose clock runs fast is published at once, dated now', async () => {
+	// The phone's clock is ten minutes fast. At UTC-12 its day is never the one the UTC+14 test above writes to.
+	const offset = -12 * 3600000;
+	const written_at = new Date( Date.now() + 10 * 60000 + offset ).toISOString().slice( 0, 19 ) + '-12:00';
+	const { status, body } = await sendEntry( {
+		id: uuid(),
+		written_at,
+		text: 'Ten minutes early.',
+		post_status: 'publish',
+	} );
+	assert.equal( status, 201 );
+	const post = await readPost( body.post_id );
+	assert.equal( post.status, 'publish' );
+	assert.ok( Date.parse( post.date_gmt + 'Z' ) <= Date.now() + 5000, post.date_gmt );
+	// The wall-clock date keeps the phone's offset.
+	assert.equal( Date.parse( post.date + 'Z' ) - Date.parse( post.date_gmt + 'Z' ), offset );
+} );
+
 test( 'invalid requests are rejected with a specific code', async () => {
 	const d = day();
 	const valid = { id: uuid(), written_at: at( d, '10:00:00' ), text: 'ok' };
