@@ -592,32 +592,7 @@ function jot2press_handle_entry( WP_REST_Request $request ) {
 		if ( $existing ) {
 			return jot2press_duplicate_response( $existing );
 		}
-		// Each photo is locked while it is looked up, attached and shown, as the cleanup locks it to check and delete
-		// it: otherwise the cleanup could delete a photo this request has just found. Sorted, so that two entries
-		// sharing photos take their locks in the same order.
-		$photo_locks = jot2press_can_hold_locks() ? array_unique( $entry['photo_ids'] ) : array();
-		sort( $photo_locks );
-		$held = array();
-		try {
-			foreach ( $photo_locks as $photo_id ) {
-				if ( ! jot2press_lock( $photo_id ) ) {
-					return jot2press_error( 'jot2press_busy', 'A photo of this entry is being stored. Try again.', 503 );
-				}
-				$held[] = $photo_id;
-			}
-			// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
-			// the photos are looked up and attached with nothing but this request's own code in between.
-			$attachments = jot2press_resolve_photos( $entry['photo_ids'] );
-			if ( is_wp_error( $attachments ) ) {
-				return $attachments;
-			}
-			$entry['attachments'] = $attachments;
-			$post_id              = jot2press_store_entry( $entry, $fallback );
-		} finally {
-			foreach ( $held as $photo_id ) {
-				jot2press_unlock( $photo_id );
-			}
-		}
+		$post_id = jot2press_store_with_photos( $entry, $fallback );
 	} finally {
 		jot2press_unlock( $entry['day'] );
 	}
@@ -632,6 +607,33 @@ function jot2press_handle_entry( WP_REST_Request $request ) {
 	}
 
 	return jot2press_created_response( $post_id, $fallback );
+}
+
+/**
+ * Stores an entry with each of its photos locked while it is looked up, attached and shown, as the cleanup locks a
+ * photo to check and delete it: otherwise the cleanup could delete a photo this request has just found.
+ * Call it only while the day is locked.
+ *
+ * @param WP_Term|null $fallback Output, as for jot2press_store_entry().
+ * @return int|WP_Error The id of the day's post.
+ */
+function jot2press_store_with_photos( array $entry, ?WP_Term &$fallback ) {
+	$locked = jot2press_lock_all( jot2press_can_hold_locks() ? $entry['photo_ids'] : array() );
+	if ( null === $locked ) {
+		return jot2press_error( 'jot2press_busy', 'A photo of this entry is being stored. Try again.', 503 );
+	}
+	try {
+		// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
+		// the photos are looked up and attached with nothing but this request's own code in between.
+		$attachments = jot2press_resolve_photos( $entry['photo_ids'] );
+		if ( is_wp_error( $attachments ) ) {
+			return $attachments;
+		}
+		$entry['attachments'] = $attachments;
+		return jot2press_store_entry( $entry, $fallback );
+	} finally {
+		jot2press_unlock_all( $locked );
+	}
 }
 
 /** Returns the id of the post an entry was stored in, or 0 if it never was. */
@@ -684,6 +686,32 @@ function jot2press_can_hold_locks(): bool {
 function jot2press_unlock( string $name ): void {
 	global $wpdb;
 	$wpdb->query( $wpdb->prepare( 'SELECT RELEASE_LOCK(%s)', jot2press_lock_name( $name ) ) );
+}
+
+/**
+ * Takes the lock of every name, sorted so that two requests sharing names take them in the same order. Returns the
+ * names locked, or null when one is held elsewhere for too long: the ones already taken are let go then.
+ *
+ * @return string[]|null
+ */
+function jot2press_lock_all( array $names ): ?array {
+	$names = array_unique( $names );
+	sort( $names );
+	$held = array();
+	foreach ( $names as $name ) {
+		if ( ! jot2press_lock( $name ) ) {
+			jot2press_unlock_all( $held );
+			return null;
+		}
+		$held[] = $name;
+	}
+	return $held;
+}
+
+function jot2press_unlock_all( array $names ): void {
+	foreach ( $names as $name ) {
+		jot2press_unlock( $name );
+	}
 }
 
 function jot2press_duplicate_response( int $post_id ): WP_REST_Response {
