@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Without it, Android 13 and later hide the notice that says a search for a position goes on. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".Jot2PressApp"

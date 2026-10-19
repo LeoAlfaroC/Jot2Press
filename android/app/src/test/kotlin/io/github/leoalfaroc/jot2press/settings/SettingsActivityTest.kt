@@ -132,10 +132,14 @@ class SettingsActivityTest {
     }
 
     /** Answers Android's prompt with `result` for every permission it asked for. */
+    private fun answer(scenario: ActivityScenario<SettingsActivity>, request: ShadowActivity.PermissionsRequest, result: Int) =
+        answer(scenario, request) { result }
+
+    /** Answers Android's prompt with `result` of each permission it asked for. */
     @Suppress("DEPRECATION")
-    private fun answer(scenario: ActivityScenario<SettingsActivity>, request: ShadowActivity.PermissionsRequest, result: Int) {
+    private fun answer(scenario: ActivityScenario<SettingsActivity>, request: ShadowActivity.PermissionsRequest, result: (String) -> Int) {
         scenario.onActivity {
-            it.onRequestPermissionsResult(request.requestCode, request.requestedPermissions, IntArray(request.requestedPermissions.size) { result })
+            it.onRequestPermissionsResult(request.requestCode, request.requestedPermissions, request.requestedPermissions.map(result).toIntArray())
         }
     }
 
@@ -149,13 +153,40 @@ class SettingsActivityTest {
             compose.onNodeWithText("Attach location").performScrollTo().assertIsOff().performClick()
 
             val request = lastPermissionRequest(scenario)
-            assertEquals(setOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), request.requestedPermissions.toSet())
+            assertEquals(
+                setOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS),
+                request.requestedPermissions.toSet(),
+            )
             world.location.permission = Permission.PRECISE
             answer(scenario, request, PackageManager.PERMISSION_GRANTED)
 
             compose.waitUntil(TIMEOUT) { stored().attachLocation }
             assertTrue(stored().pinOn)
             compose.onNodeWithText("Attach location").assertIsOn()
+        }
+    }
+
+    @Test
+    fun `the app declares the notification permission, which shows the location search`() {
+        val context = world.context
+        val declared = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+        assertTrue(Manifest.permission.POST_NOTIFICATIONS in declared)
+    }
+
+    @Test
+    fun `notifications granted with location refused leave Attach location off`() {
+        world
+        ActivityScenario.launch(SettingsActivity::class.java).use { scenario ->
+            appears("Attach location")
+            compose.onNodeWithText("Attach location").performScrollTo().performClick()
+
+            answer(scenario, lastPermissionRequest(scenario)) {
+                if (it == Manifest.permission.POST_NOTIFICATIONS) PackageManager.PERMISSION_GRANTED else PackageManager.PERMISSION_DENIED
+            }
+
+            compose.waitForIdle()
+            compose.onNodeWithText("Attach location").assertIsOff()
+            assertFalse(stored().attachLocation)
         }
     }
 

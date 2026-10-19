@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -111,6 +112,13 @@ class SettingsActivity : ComponentActivity() {
         /** Asked together, so that Android 12 and later offer the choice between precise and approximate. */
         private val LOCATION_PERMISSIONS = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
+        /**
+         * With location, on Android 13 and later, the permission to post notifications: without it the notice of a search
+         * that goes on after the dialog closes is hidden. Its answer does not change `Attach location`.
+         */
+        private val ASKED_FOR_LOCATION =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) LOCATION_PERMISSIONS + Manifest.permission.POST_NOTIFICATIONS else LOCATION_PERMISSIONS
+
         /** Starts on the queue screen, where entries that could not be sent are retried or deleted. */
         const val OPEN_QUEUE = "io.github.leoalfaroc.jot2press.OPEN_QUEUE"
 
@@ -124,7 +132,7 @@ class SettingsActivity : ComponentActivity() {
             Jot2PressTheme {
                 // Outside the branches below, so that an answer arriving after a recreation still finds it.
                 val askLocation = rememberLauncherForActivityResult(RequestMultiplePermissions()) { answer ->
-                    val granted = answer.values.any { it }
+                    val granted = LOCATION_PERMISSIONS.any { answer[it] == true }
                     viewModel.locationAnswered(granted, blocked = !granted && !shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION))
                 }
                 var onQueue by rememberSaveable { mutableStateOf(intent.getBooleanExtra(OPEN_QUEUE, false)) }
@@ -137,7 +145,7 @@ class SettingsActivity : ComponentActivity() {
                     val actions = remember {
                         viewModel.actions(
                             openQueue = { onQueue = true },
-                            askLocation = { askLocation.launch(LOCATION_PERMISSIONS) },
+                            askLocation = { askLocation.launch(ASKED_FOR_LOCATION) },
                             openAppSettings = {
                                 startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
                             },
