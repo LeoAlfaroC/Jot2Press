@@ -10,6 +10,7 @@ import io.github.leoalfaroc.jot2press.data.PhotoFiles
 import io.github.leoalfaroc.jot2press.data.Queue
 import io.github.leoalfaroc.jot2press.data.Settings
 import io.github.leoalfaroc.jot2press.data.SettingsStore
+import io.github.leoalfaroc.jot2press.data.UNKNOWN_PHOTO
 import io.github.leoalfaroc.jot2press.data.day
 import io.github.leoalfaroc.jot2press.net.ApiResult
 import io.github.leoalfaroc.jot2press.net.Coordinates
@@ -123,6 +124,8 @@ class Sender(
     }
 
     private suspend fun drain(): Outcome {
+        // The entries whose photos were uploaded again in this run, after the site said it had lost them.
+        val reuploaded = mutableSetOf<String>()
         while (true) {
             // Read again for every entry: `Save` may have stored other credentials since the last one.
             if (settings.get().authError) return Outcome.HELD
@@ -133,7 +136,7 @@ class Sender(
                 val api = apiFor(signIn)
                 val photos = queue.photosOf(entry.id)
                 var step = sendPhotos(api, signIn, entry, photos)
-                if (step == Step.Go) step = sendEntry(api, signIn, entry, photos)
+                if (step == Step.Go) step = sendEntry(api, signIn, entry, photos, reuploaded)
                 if (step is Step.Stop) return step.outcome
             } finally {
                 inFlight.value = null
@@ -205,7 +208,13 @@ class Sender(
         return Step.Go
     }
 
-    private suspend fun sendEntry(api: Jot2PressApi, signIn: Credentials, entry: Entry, photos: List<Photo>): Step =
+    private suspend fun sendEntry(
+        api: Jot2PressApi,
+        signIn: Credentials,
+        entry: Entry,
+        photos: List<Photo>,
+        reuploaded: MutableSet<String>,
+    ): Step =
         when (val result = api.sendEntry(payload(entry, settings.get(), photos))) {
             is ApiResult.Ok -> {
                 // The fallback is recorded first: if the process dies between the two, the resend finds the entry
@@ -216,7 +225,14 @@ class Sender(
             }
             // No answer says nothing about the site, so nothing is recorded.
             is ApiResult.Unreachable -> Step.Stop(Outcome.RETRY)
-            is ApiResult.Refused -> refused(result, signIn, entry)
+            // The site's cleanup deleted photos uploaded long ago, while the entry waited: they are uploaded again,
+            // once per run, so that a site that keeps losing them fails the entry instead of looping.
+            is ApiResult.Refused -> if (result.code == UNKNOWN_PHOTO && reuploaded.add(entry.id)) {
+                queue.forgetUploads(entry.id)
+                Step.Again
+            } else {
+                refused(result, signIn, entry)
+            }
         }
 
     /** What a refusal of any request of [entry] does to the queue. [message] replaces the site's own, when given. */

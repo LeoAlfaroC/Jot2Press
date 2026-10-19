@@ -41,6 +41,9 @@ class Queue(
 
     suspend fun markUploaded(photoId: String) = photoDao.markUploaded(photoId)
 
+    /** The site no longer has this entry's photos: they are uploaded again before it is sent. */
+    suspend fun forgetUploads(entryId: String) = photoDao.clearUploaded(entryId)
+
     /**
      * Keeps what is in the editor: its text and its photos, in order. Nothing, or only spaces, with no photo is not a draft.
      * `afresh` says the editor has let go of the entry it had taken back from its grace window:

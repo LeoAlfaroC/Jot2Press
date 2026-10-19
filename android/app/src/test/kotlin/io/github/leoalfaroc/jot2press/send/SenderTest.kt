@@ -304,20 +304,42 @@ class SenderTest {
     }
 
     @Test
-    fun `after unknown_photo, Retry uploads the photos again`() = runTest {
+    fun `after unknown_photo the photos are uploaded again at once`() = runTest {
+        // The site's cleanup deleted photos that were uploaded long ago, while their entry waited.
+        settings.setMaxUploadBytes(67_108_864)
+        val (_, photos) = pendingWithPhotos("Coffee", 2)
+        queue.markUploaded(photos[0].id)
+        queue.markUploaded(photos[1].id)
+        wordPressError(400, "unknown_photo", "Photo ${photos[0].id} has not been uploaded.")
+        photoStored()
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(4, server.requestCount)
+        assertEquals(listOf("/entries", "/photos", "/photos", "/entries"), List(4) { "/" + server.takeRequest().url.encodedPath.substringAfterLast('/') })
+        assertTrue(queue.observe().first().isEmpty())
+    }
+
+    @Test
+    fun `unknown_photo again right after the photos were uploaded again fails the entry, and Retry uploads them once more`() = runTest {
         settings.setMaxUploadBytes(67_108_864)
         val (entry, photos) = pendingWithPhotos("Coffee", 1)
         photoStored()
         wordPressError(400, "unknown_photo", "Photo ${photos[0].id} has not been uploaded.")
+        photoStored()
+        wordPressError(400, "unknown_photo", "Photo ${photos[0].id} has not been uploaded.")
         assertEquals(Sender.Outcome.DONE, sender.run())
         assertEquals(EntryState.FAILED, stored(entry.id)!!.state)
+        assertEquals(4, server.requestCount)
 
         queue.retry(entry.id)
         photoStored()
         created()
         assertEquals(Sender.Outcome.DONE, sender.run())
 
-        assertEquals(4, server.requestCount)
+        assertEquals(6, server.requestCount)
         assertTrue(queue.observe().first().isEmpty())
     }
 
