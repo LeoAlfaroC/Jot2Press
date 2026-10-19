@@ -83,7 +83,6 @@ val OnAlert = Color(0xFFFFFFFF)
 
 /** Selected text, and the band behind the 2 of the wordmark. */
 val Highlighter = Color(0xFFFFEB00)
-val OnHighlighter = Color(0xFF16171B)
 
 /** The day number and headings: static instances of Shantell Sans. The licences of both families are in assets/licenses. */
 val Display = FontFamily(
