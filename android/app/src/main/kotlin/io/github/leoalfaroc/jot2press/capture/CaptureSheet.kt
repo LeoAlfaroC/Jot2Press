@@ -87,9 +87,7 @@ import io.github.leoalfaroc.jot2press.ui.Jot2PressType
 import io.github.leoalfaroc.jot2press.ui.LocalJot2PressColors
 import io.github.leoalfaroc.jot2press.ui.TextAction
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
@@ -128,6 +126,7 @@ fun CaptureScreen(
     actions: CaptureActions,
     now: () -> Long,
     onDismiss: () -> Unit,
+    /** Called on the main thread: it decodes elsewhere, as `Thumbnails.of` does. */
     loadThumbnail: suspend (DraftPhoto) -> ImageBitmap? = { null },
 ) {
     Box(Modifier.fillMaxSize()) {
@@ -430,10 +429,10 @@ private fun PhotoRow(photos: List<DraftPhoto>, remove: (String) -> Unit, loadThu
 @Composable
 private fun Thumbnail(photo: DraftPhoto, number: Int, total: Int, remove: (String) -> Unit, load: suspend (DraftPhoto) -> ImageBitmap?) {
     val colors = LocalJot2PressColors.current
-    // Decoding blocks, so it runs off the main thread; a loader that fails leaves the washed square instead of crashing the sheet.
+    // A loader that fails leaves the washed square instead of crashing the sheet.
     val image by produceState<ImageBitmap?>(null, photo.id) {
         value = try {
-            withContext(Dispatchers.IO) { load(photo) }
+            load(photo)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
