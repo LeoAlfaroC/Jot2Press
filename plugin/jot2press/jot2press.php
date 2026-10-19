@@ -325,7 +325,9 @@ function jot2press_pick_category( ?string $slug ) {
 }
 
 /**
- * Creates the post for a day, with the given status (private, draft or publish) and category.
+ * Creates the post for a day, in the given category. It starts as an empty draft and takes the status asked for
+ * (private, draft or publish), kept in _journal_status until then, with its first entry: a public post must never
+ * be out, or announced, without it.
  *
  * @return int|WP_Error
  */
@@ -340,7 +342,7 @@ function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?st
 		wp_slash(
 			array(
 				'post_type'     => 'post',
-				'post_status'   => $status,
+				'post_status'   => 'draft',
 				'post_title'    => $title,
 				'post_name'     => $day,
 				'post_content'  => '',
@@ -350,7 +352,10 @@ function jot2press_create_day_post( string $day, DateTimeImmutable $written, ?st
 				'post_date'     => $written->format( 'Y-m-d H:i:s' ),
 				'post_date_gmt' => $written->setTimezone( new DateTimeZone( 'UTC' ) )->format( 'Y-m-d H:i:s' ),
 				'post_category' => array( $category->term_id ),
-				'meta_input'    => array( '_journal_date' => $day ),
+				'meta_input'    => array(
+					'_journal_date'   => $day,
+					'_journal_status' => $status,
+				),
 			)
 		),
 		true
@@ -411,24 +416,32 @@ function jot2press_render( string $id, DateTimeImmutable $written, string $text,
 
 /**
  * Appends markup to the end of a post's current content. WordPress saves a revision of the result, as for any edit.
+ * A day post still waiting for its first entry takes the status it was created for in the same write.
  *
  * @return int|WP_Error
  */
 function jot2press_append( int $post_id, string $markup ) {
 	// Read the content from the database, not from a copy cached earlier in this request.
 	clean_post_cache( $post_id );
-	$content = rtrim( get_post( $post_id )->post_content );
+	$post    = get_post( $post_id );
+	$content = rtrim( $post->post_content );
 	$content = '' === $content ? $markup : $content . "\n\n" . $markup;
 
-	return wp_update_post(
-		wp_slash(
-			array(
-				'ID'           => $post_id,
-				'post_content' => $content,
-			)
-		),
-		true
+	$changes = array(
+		'ID'           => $post_id,
+		'post_content' => $content,
 	);
+	$status  = (string) get_post_meta( $post_id, '_journal_status', true );
+	// Only while it is the draft this plugin made: a status someone chose since then stays.
+	if ( '' !== $status && 'draft' === $post->post_status ) {
+		$changes['post_status'] = $status;
+	}
+
+	$result = wp_update_post( wp_slash( $changes ), true );
+	if ( ! is_wp_error( $result ) && '' !== $status ) {
+		delete_post_meta( $post_id, '_journal_status' );
+	}
+	return $result;
 }
 
 /**

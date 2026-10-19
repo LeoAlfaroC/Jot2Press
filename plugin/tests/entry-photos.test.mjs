@@ -229,6 +229,31 @@ test( 'an entry is not written when one of its photos cannot be attached', async
 	assert.equal( ( await readMedia( attachmentId ) ).post, retry.body.post_id );
 } );
 
+test( 'a public day post is not public until its first entry is in it', async () => {
+	const d = day();
+	const upload = await uploadPhoto();
+	const fields = { id: uuid(), written_at: at( d, '11:30:00' ), text: 'Public, with its photo.', photo_ids: [ upload.id ], post_status: 'publish' };
+	// Inside the test site: the day post is created, then WordPress refuses to save the attachment.
+	const attempt = `
+		add_filter( 'wp_insert_post_empty_content', function ( $empty, $postarr ) {
+			return 'attachment' === ( $postarr['post_type'] ?? '' ) ? true : $empty;
+		}, 10, 2 );
+		wp_set_current_user( get_user_by( 'login', 'admin' )->ID );
+		$request = new WP_REST_Request( 'POST', '/jot2press/v1/entries' );
+		$request->set_body_params( json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) );
+		echo 'STATUS=' . rest_do_request( $request )->get_status() . "\\n";
+	`;
+	assert.ok( wp( 'eval', attempt ).includes( 'STATUS=500' ) );
+	const seen = await api( 'GET', '/wp/v2/posts', { who: 'anonymous', query: `&slug=${ d }` } );
+	assert.deepEqual( seen.body, [] );
+
+	const retry = await sendEntry( fields );
+	assert.equal( retry.status, 201 );
+	const post = await readPost( retry.body.post_id );
+	assert.equal( post.status, 'publish' );
+	assert.ok( post.content.raw.includes( fields.text ) );
+} );
+
 test( 'a repeated entry is answered as a duplicate even after its photo was deleted', async () => {
 	const upload = await uploadPhoto();
 	const fields = { id: uuid(), written_at: at( day(), '12:00:00' ), text: 'Stored once.', photo_ids: [ upload.id ] };
