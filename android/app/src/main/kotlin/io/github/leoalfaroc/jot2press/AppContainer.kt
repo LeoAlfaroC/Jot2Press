@@ -113,7 +113,8 @@ fun realContainer(app: Application): AppContainer {
     val queue = Queue(db, PhoneClock, photoFiles)
     val settings = SettingsStore(store)
     val credentials = CredentialStore(store, KeystoreBox())
-    val client = jot2PressHttpClient()
+    // Built at the first request, not at every start: the capture dialog, opened from the widget, never needs it.
+    val client by lazy { jot2PressHttpClient() }
     val apiFor = { signIn: Credentials -> HttpJot2PressApi(client, signIn) }
     val connectivity = app.getSystemService(ConnectivityManager::class.java)
     val dialogs = Dialogs()
