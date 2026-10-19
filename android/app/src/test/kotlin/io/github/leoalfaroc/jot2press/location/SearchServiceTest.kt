@@ -24,7 +24,10 @@ class SearchServiceTest {
     private val app: Application = ApplicationProvider.getApplicationContext()
 
     @Before
-    fun freshState() = LocationService.reset()
+    fun freshState() = synchronized(LocationService.lock) {
+        LocationService.wanted = false
+        LocationService.foreground = false
+    }
 
     @Test
     fun `the service stands in the foreground with its silent notification`() {

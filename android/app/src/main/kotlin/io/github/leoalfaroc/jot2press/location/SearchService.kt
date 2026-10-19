@@ -91,11 +91,6 @@ class LocationService : Service() {
         val lock = Any()
         var wanted = false
         var foreground = false
-
-        fun reset() = synchronized(lock) {
-            wanted = false
-            foreground = false
-        }
     }
 }
 
