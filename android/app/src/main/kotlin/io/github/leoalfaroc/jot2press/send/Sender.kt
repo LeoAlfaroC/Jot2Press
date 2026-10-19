@@ -10,6 +10,7 @@ import io.github.leoalfaroc.jot2press.data.PhotoFiles
 import io.github.leoalfaroc.jot2press.data.Queue
 import io.github.leoalfaroc.jot2press.data.Settings
 import io.github.leoalfaroc.jot2press.data.SettingsStore
+import io.github.leoalfaroc.jot2press.data.SiteStatus
 import io.github.leoalfaroc.jot2press.data.UNKNOWN_PHOTO
 import io.github.leoalfaroc.jot2press.data.day
 import io.github.leoalfaroc.jot2press.net.ApiResult
@@ -170,16 +171,14 @@ class Sender(
             val number = photos.indexOf(photo) + 1
             val ready = try {
                 withContext(Dispatchers.IO) { prepare(files.file(photo.file), limit, accepted) }
-            } catch (e: UnreadablePhoto) {
-                queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
-                return Step.Again
             } catch (e: IOException) {
                 // The phone could not write what it would send (no space): not the photo's fault.
                 return Step.Stop(Outcome.RETRY)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Whatever the platform's image code throws: a photo it cannot handle is the entry's problem, not the queue's.
+                // UnreadablePhoto, or whatever the platform's image code throws: a photo it cannot handle is the entry's
+                // problem, not the queue's.
                 queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
                 return Step.Again
             }
@@ -192,31 +191,40 @@ class Sender(
             when (result) {
                 is ApiResult.Ok -> queue.markUploaded(photo.id)
                 is ApiResult.Unreachable -> return unreachable(result, entry)
-                is ApiResult.Refused -> {
-                    if (result.code == TYPE_NOT_ALLOWED) {
-                        // The site no longer takes a type it took: read what it takes now, and start the entry over,
-                        // which makes the photo a JPEG. Only once: the next refusal of the kind fails the entry.
-                        val now = (api.status() as? ApiResult.Ok)?.value?.also { settings.setUploadRules(it) }
-                        if (now != null && ready.mediaType !in (now.photoTypes ?: PLUGIN_PHOTO_TYPES)) return Step.Again
-                        return refused(result, signIn, entry)
-                    }
-                    if (result.status != 413) return refused(result, signIn, entry)
-                    // WordPress reported a limit the web server in front of it does not allow. Only the refusal says
-                    // how much less it takes: half of what it refused, so that Retry sends a smaller photo, and a few
-                    // Retries reach even a far lower limit. A tested connection puts WordPress's figure back.
-                    val reported = (api.status() as? ApiResult.Ok)?.value?.also { settings.setUploadRules(it) }?.maxUploadBytes ?: limit
-                    settings.setMaxUploadBytes(minOf(reported, size / 2))
-                    return refused(
-                        result,
-                        signIn,
-                        entry,
-                        "Photo $number of ${photos.size} is larger than the site accepts. " +
-                            "The web server's upload limit is lower than the ${megabytes(reported)} WordPress reports.",
-                    )
+                is ApiResult.Refused -> return when {
+                    result.code == TYPE_NOT_ALLOWED && noLongerTaken(api, ready.mediaType) -> Step.Again
+                    result.status == 413 -> refused(result, signIn, entry, tooLarge(api, size, limit, "Photo $number of ${photos.size}"))
+                    else -> refused(result, signIn, entry)
                 }
             }
         }
         return Step.Go
+    }
+
+    /** What the site accepts now, read again and kept; null when it does not say. */
+    private suspend fun freshRules(api: Jot2PressApi): SiteStatus? =
+        (api.status() as? ApiResult.Ok)?.value?.also { settings.setUploadRules(it) }
+
+    /**
+     * Whether the site no longer takes [mediaType], a type it took. The entry then starts over, which makes the photo
+     * a JPEG. Only once: the next refusal of the kind fails the entry.
+     */
+    private suspend fun noLongerTaken(api: Jot2PressApi, mediaType: String): Boolean {
+        val now = freshRules(api) ?: return false
+        return mediaType !in (now.photoTypes ?: PLUGIN_PHOTO_TYPES)
+    }
+
+    /**
+     * A photo of [size] bytes was refused as too large: WordPress reported a limit the web server in front of it does
+     * not allow. Only the refusal says how much less it takes: half of what it refused, so that Retry sends a smaller
+     * photo, and a few Retries reach even a far lower limit. A tested connection puts WordPress's figure back.
+     * Returns what the entry fails with.
+     */
+    private suspend fun tooLarge(api: Jot2PressApi, size: Long, limit: Long, photo: String): String {
+        val reported = freshRules(api)?.maxUploadBytes ?: limit
+        settings.setMaxUploadBytes(minOf(reported, size / 2))
+        return "$photo is larger than the site accepts. " +
+            "The web server's upload limit is lower than the ${megabytes(reported)} WordPress reports."
     }
 
     private suspend fun sendEntry(
