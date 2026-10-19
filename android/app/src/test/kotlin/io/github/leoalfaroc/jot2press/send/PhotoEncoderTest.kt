@@ -135,6 +135,18 @@ class PhotoEncoderTest {
     }
 
     @Test
+    fun `a photo of a type the site does not take becomes a JPEG even when small`() {
+        val source = write(noisy(40, 30), Bitmap.CompressFormat.PNG)
+
+        val sent = encoder.prepare(source, limit = 10_000_000, accepted = setOf("image/jpeg"))
+
+        assertTrue(sent.temporary)
+        assertEquals("image/jpeg", sent.mediaType)
+        assertEquals(PhotoKind.JPEG, PhotoKind.of(sent.file))
+        assertEquals(40 to 30, size(sent.file))
+    }
+
+    @Test
     fun `a re-encoded photo comes out upright`() {
         val source = write(noisy(80, 40), Bitmap.CompressFormat.JPEG)
         ExifInterface(source).apply {

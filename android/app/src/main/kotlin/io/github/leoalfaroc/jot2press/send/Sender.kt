@@ -4,6 +4,7 @@ import io.github.leoalfaroc.jot2press.BuildConfig
 import io.github.leoalfaroc.jot2press.Titles
 import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.Entry
+import io.github.leoalfaroc.jot2press.data.PLUGIN_PHOTO_TYPES
 import io.github.leoalfaroc.jot2press.data.Photo
 import io.github.leoalfaroc.jot2press.data.PhotoFiles
 import io.github.leoalfaroc.jot2press.data.Queue
@@ -56,6 +57,7 @@ fun verdict(refused: ApiResult.Refused): Verdict = when {
 }
 
 private const val NO_ROUTE = "rest_no_route"
+private const val TYPE_NOT_ALLOWED = "photo_type_not_allowed"
 
 /** The plugin's 403s about one entry: the account may publish, but not upload its photos or edit its day's post. */
 private val ENTRY_REFUSALS = setOf("cannot_upload_photos", "cannot_edit_day_post")
@@ -68,8 +70,8 @@ class Sender(
     private val credentials: suspend () -> Credentials?,
     private val apiFor: (Credentials) -> Jot2PressApi,
     private val files: PhotoFiles,
-    /** Makes a photo's copy fit the limit: `PhotoEncoder.prepare`. */
-    private val prepare: (File, Long) -> Prepared,
+    /** Makes a photo's copy fit the limit and the types the site accepts: `PhotoEncoder.prepare`. */
+    private val prepare: (File, Long, Set<String>) -> Prepared,
     private val deviceLocale: () -> Locale = { Locale.getDefault() },
 ) {
     enum class Outcome {
@@ -143,15 +145,17 @@ class Sender(
     private suspend fun sendPhotos(api: Jot2PressApi, signIn: Credentials, entry: Entry, photos: List<Photo>): Step {
         val waiting = photos.filterNot { it.uploaded }
         if (waiting.isEmpty()) return Step.Go
-        val limit = settings.get().maxUploadBytes ?: when (val status = api.status()) {
-            is ApiResult.Ok -> status.value.maxUploadBytes.also { settings.setMaxUploadBytes(it) }
+        val stored = settings.get()
+        val (limit, types) = stored.maxUploadBytes?.let { it to stored.photoTypes } ?: when (val status = api.status()) {
+            is ApiResult.Ok -> status.value.also { settings.setUploadRules(it) }.let { it.maxUploadBytes to it.photoTypes }
             is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
             is ApiResult.Refused -> return refused(status, signIn, entry)
         }
+        val accepted = types ?: PLUGIN_PHOTO_TYPES
         for (photo in waiting) {
             val number = photos.indexOf(photo) + 1
             val ready = try {
-                withContext(Dispatchers.IO) { prepare(files.file(photo.file), limit) }
+                withContext(Dispatchers.IO) { prepare(files.file(photo.file), limit, accepted) }
             } catch (e: UnreadablePhoto) {
                 queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
                 return Step.Again
@@ -174,6 +178,13 @@ class Sender(
                 is ApiResult.Ok -> queue.markUploaded(photo.id)
                 is ApiResult.Unreachable -> return Step.Stop(Outcome.RETRY)
                 is ApiResult.Refused -> {
+                    if (result.code == TYPE_NOT_ALLOWED) {
+                        // The site no longer takes a type it took: read what it takes now, and start the entry over,
+                        // which makes the photo a JPEG. Only once: the next refusal of the kind fails the entry.
+                        val now = (api.status() as? ApiResult.Ok)?.value?.also { settings.setUploadRules(it) }
+                        if (now != null && ready.mediaType !in (now.photoTypes ?: PLUGIN_PHOTO_TYPES)) return Step.Again
+                        return refused(result, signIn, entry)
+                    }
                     if (result.status != 413) return refused(result, signIn, entry)
                     // WordPress reported a limit the web server in front of it does not allow.
                     (api.status() as? ApiResult.Ok)?.let { settings.setMaxUploadBytes(it.value.maxUploadBytes) }

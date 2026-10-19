@@ -8,6 +8,7 @@ import io.github.leoalfaroc.jot2press.data.CategoryNotice
 import io.github.leoalfaroc.jot2press.data.Credentials
 import io.github.leoalfaroc.jot2press.data.DraftPhoto
 import io.github.leoalfaroc.jot2press.data.Entry
+import io.github.leoalfaroc.jot2press.data.PLUGIN_PHOTO_TYPES
 import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.data.PhotoFiles
 import io.github.leoalfaroc.jot2press.data.PostStatus
@@ -62,11 +63,12 @@ class SenderTest {
     /** Runs when a request is about to leave, after the sender has read the credentials for it. */
     private var whileSending: () -> Unit = {}
     /** Replaced by a test that needs preparing a photo to fail. */
-    private var prepare: (java.io.File, Long) -> Prepared = { source, limit -> PhotoEncoder(folder.newFolder("cache-${++caches}")).prepare(source, limit) }
+    private var prepare: (java.io.File, Long, Set<String>) -> Prepared =
+        { source, limit, accepted -> PhotoEncoder(folder.newFolder("cache-${++caches}")).prepare(source, limit, accepted) }
     private var caches = 0
     private val sender by lazy {
         saved = signIn
-        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit -> prepare(source, limit) }, deviceLocale = { Locale.FRENCH })
+        Sender(queue, settings, credentials = { saved }, apiFor = ::api, files = files, prepare = { source, limit, accepted -> prepare(source, limit, accepted) }, deviceLocale = { Locale.FRENCH })
     }
 
     private fun api(signIn: Credentials): Jot2PressApi {
@@ -122,6 +124,64 @@ class SenderTest {
         200,
         """{"user":"leo","category":{"slug":"journal","name":"Journal"},"categories":[],"max_upload_bytes":$limit,"version":"1.0.0"}""",
     )
+
+    private fun status(limit: Long, types: String) = answer(
+        200,
+        """{"user":"leo","category":{"slug":"journal","name":"Journal"},"categories":[],"max_upload_bytes":$limit,"version":"1.0.0","photo_types":$types}""",
+    )
+
+    /** Prepares every photo as it is, said to be a WebP while the site is thought to take WebP, and a JPEG once not. */
+    private fun webpUnlessRefused(asked: MutableList<Set<String>>): (java.io.File, Long, Set<String>) -> Prepared = { source, _, accepted ->
+        asked += accepted
+        Prepared(source, if ("image/webp" in accepted) "image/webp" else "image/jpeg", temporary = false)
+    }
+
+    @Test
+    fun `photos are prepared for the types the site says it accepts`() = runTest {
+        val asked = mutableListOf<Set<String>>()
+        prepare = webpUnlessRefused(asked)
+        pendingWithPhotos("Lunch", 1)
+        status(67_108_864, """["image/jpeg","image/png"]""")
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(listOf(setOf("image/jpeg", "image/png")), asked)
+        assertEquals(setOf("image/jpeg", "image/png"), settings.get().photoTypes)
+    }
+
+    @Test
+    fun `a photo of a type the site stopped accepting is sent again as a JPEG`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val asked = mutableListOf<Set<String>>()
+        prepare = webpUnlessRefused(asked)
+        val (entry, _) = pendingWithPhotos("Lunch", 1)
+        wordPressError(400, "photo_type_not_allowed", "This site does not accept WebP photos.")
+        status(67_108_864, """["image/jpeg","image/png"]""")
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertNull(stored(entry.id))
+        assertEquals(listOf(PLUGIN_PHOTO_TYPES, setOf("image/jpeg", "image/png")), asked)
+    }
+
+    @Test
+    fun `a photo refused for a type the site still says it accepts fails its entry`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        prepare = webpUnlessRefused(mutableListOf())
+        val (entry, _) = pendingWithPhotos("Lunch", 1)
+        wordPressError(400, "photo_type_not_allowed", "This site does not accept WebP photos.")
+        status(67_108_864, """["image/jpeg","image/png","image/webp"]""")
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        val failed = stored(entry.id)!!
+        assertEquals(EntryState.FAILED, failed.state)
+        assertEquals("This site does not accept WebP photos.", failed.lastError)
+    }
 
     @Test
     fun `the entry being sent cannot be deleted, and one waiting behind it can`() = runTest {
@@ -256,7 +316,7 @@ class SenderTest {
     fun `a phone that cannot write the photo to send keeps the entry waiting`() = runTest {
         settings.setMaxUploadBytes(67_108_864)
         val (entry, _) = pendingWithPhotos("Coffee", 1)
-        prepare = { _, _ -> throw java.io.IOException("No space left on device") }
+        prepare = { _, _, _ -> throw java.io.IOException("No space left on device") }
 
         assertEquals(Sender.Outcome.RETRY, sender.run())
 
@@ -268,7 +328,7 @@ class SenderTest {
     fun `a photo that fails to prepare in an unexpected way fails the entry as unreadable`() = runTest {
         settings.setMaxUploadBytes(67_108_864)
         val (entry, _) = pendingWithPhotos("Coffee", 1)
-        prepare = { _, _ -> throw IllegalStateException("Bitmap broke") }
+        prepare = { _, _, _ -> throw IllegalStateException("Bitmap broke") }
 
         assertEquals(Sender.Outcome.DONE, sender.run())
 

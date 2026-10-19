@@ -12,6 +12,7 @@ import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -65,6 +66,16 @@ class HttpJot2PressApiTest {
         assertEquals("GET", request.method)
         assertEquals("/wp-json/jot2press/v1/status", request.url.encodedPath)
         assertEquals(okhttp3.Credentials.basic("leo", "abcd efgh"), request.headers["Authorization"])
+    }
+
+    @Test
+    fun `the status reports the photo types the site accepts, and an older plugin none`() = runTest {
+        val site = """"user":"leo","category":{"slug":"journal","name":"Journal"},"categories":[],"max_upload_bytes":1,"version":"1.0.0""""
+        answer(200, """{$site,"photo_types":["image/jpeg","image/png"]}""")
+        answer(200, """{$site}""")
+
+        assertEquals(setOf("image/jpeg", "image/png"), (api().status() as ApiResult.Ok).value.photoTypes)
+        assertNull((api().status() as ApiResult.Ok).value.photoTypes)
     }
 
     @Test

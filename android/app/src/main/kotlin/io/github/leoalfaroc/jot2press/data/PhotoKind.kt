@@ -2,6 +2,9 @@ package io.github.leoalfaroc.jot2press.data
 
 import java.io.File
 
+/** Every photo type the plugin stores. A site may take fewer, and says which. */
+val PLUGIN_PHOTO_TYPES: Set<String> = PhotoKind.entries.mapNotNull { it.mediaType }.toSet()
+
 /** What a photo is, read from its first bytes: the file name and the type the picker reported can both be wrong. */
 enum class PhotoKind(val extension: String, val mediaType: String?) {
     JPEG("jpg", "image/jpeg"),

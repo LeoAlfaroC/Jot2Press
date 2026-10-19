@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
+import io.github.leoalfaroc.jot2press.data.PLUGIN_PHOTO_TYPES
 import io.github.leoalfaroc.jot2press.data.PhotoKind
 import java.io.File
 import java.io.IOException
@@ -23,12 +24,14 @@ class UnreadablePhoto : Exception("The photo cannot be read.")
  * A photo that fits goes as it is, but never with where it was taken.
  */
 class PhotoEncoder(private val cache: File) {
-    fun prepare(source: File, limit: Long): Prepared {
+    fun prepare(source: File, limit: Long, accepted: Set<String> = PLUGIN_PHOTO_TYPES): Prepared {
         if (!source.isFile) throw UnreadablePhoto()
         val kind = PhotoKind.of(source)
-        if (kind.mediaType != null && source.length() <= limit) {
+        // A type the site does not take is treated as one the plugin does not: it becomes a JPEG.
+        val type = kind.mediaType?.takeIf { it in accepted }
+        if (type != null && source.length() <= limit) {
             // A photo whose place cannot be taken out goes the way a photo over the limit does, which drops it.
-            asItIs(source, kind.mediaType)?.let { return it }
+            asItIs(source, type)?.let { return it }
         }
 
         val (width, height) = imageSize(source) ?: throw UnreadablePhoto()
@@ -36,7 +39,7 @@ class PhotoEncoder(private val cache: File) {
         while (true) {
             // The size is known to be an image, so a failed decode or a lack of memory is not "unreadable": try again at half the size.
             val prepared = try {
-                attempt(source, kind, sample, limit)
+                attempt(source, type != null, sample, limit)
             } catch (e: OutOfMemoryError) {
                 null
             }
@@ -46,14 +49,14 @@ class PhotoEncoder(private val cache: File) {
         }
     }
 
-    /** Null when the photo could not be decoded at this sample size. */
-    private fun attempt(source: File, kind: PhotoKind, sample: Int, limit: Long): Prepared? {
+    /** Null when the photo could not be decoded at this sample size. [taken] is whether the site takes its type. */
+    private fun attempt(source: File, taken: Boolean, sample: Int, limit: Long): Prepared? {
         val decoded = decodeUpright(source, sample) ?: return null
         var opaque = decoded
         try {
             opaque = onWhite(decoded)
             // A type the site does not take, but small enough, only needs a new type: one try at quality 95 first.
-            val qualities = if (kind.mediaType == null && source.length() <= limit) listOf(95) + QUALITIES else QUALITIES
+            val qualities = if (!taken && source.length() <= limit) listOf(95) + QUALITIES else QUALITIES
             return encode(opaque, qualities, limit)
         } finally {
             if (opaque !== decoded) opaque.recycle()

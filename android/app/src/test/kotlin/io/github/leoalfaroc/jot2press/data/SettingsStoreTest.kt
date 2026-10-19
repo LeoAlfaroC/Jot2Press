@@ -110,6 +110,19 @@ class SettingsStoreTest {
     }
 
     @Test
+    fun `a tested connection stores the photo types the site accepts, and saving credentials forgets them`() = runTest {
+        settings.connectionSucceeded(site(journal).copy(photoTypes = setOf("image/jpeg", "image/png")))
+        assertEquals(setOf("image/jpeg", "image/png"), settings.get().photoTypes)
+
+        settings.credentialsSaved()
+        assertNull(settings.get().photoTypes)
+
+        settings.connectionSucceeded(site(journal).copy(photoTypes = setOf("image/jpeg")))
+        settings.connectionSucceeded(site(journal))
+        assertNull("an older plugin says nothing, which takes every type", settings.get().photoTypes)
+    }
+
+    @Test
     fun `the first successful connection configures the app and chooses the default category`() = runTest {
         settings.setAuthError(true)
         settings.connectionSucceeded(site(journal, travel))

@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import io.github.leoalfaroc.jot2press.TitleLanguage
 import io.github.leoalfaroc.jot2press.Titles
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +38,8 @@ data class SiteStatus(
     val categories: List<Category>,
     val maxUploadBytes: Long,
     val version: String,
+    /** The photo types the site accepts; null from a plugin too old to say, which takes all of [PLUGIN_PHOTO_TYPES]. */
+    val photoTypes: Set<String>? = null,
 )
 
 /** The chosen category disappeared from the site: `missing` was chosen, day posts now go to `used`. Both are names. */
@@ -54,6 +57,8 @@ data class Settings(
     val categories: List<Category> = emptyList(),
     val defaultCategory: Category? = null,
     val maxUploadBytes: Long? = null,
+    /** The photo types the site accepts, stored with [maxUploadBytes]; null takes all of [PLUGIN_PHOTO_TYPES]. */
+    val photoTypes: Set<String>? = null,
     /** True once credentials have been saved. */
     val configured: Boolean = false,
     /** The site rejected the credentials; nothing is sent until others are saved or a `Test connection` of these succeeds. */
@@ -79,6 +84,9 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun setTitlePattern(pattern: String) = change { it[TITLE_PATTERN] = pattern }
     /** What the site reports as its upload limit, read again by the sender when it needs it. */
     suspend fun setMaxUploadBytes(bytes: Long) = change { it[MAX_UPLOAD] = bytes }
+
+    /** What the site reports about uploads: its limit and the photo types it accepts. */
+    suspend fun setUploadRules(status: SiteStatus) = change { it.uploadRules(status) }
     suspend fun setAuthError(on: Boolean) = change { it[AUTH_ERROR] = on }
 
     /** Turning it on turns the dialog's pin on too. */
@@ -101,8 +109,10 @@ class SettingsStore(private val store: DataStore<Preferences>) {
     suspend fun credentialsSaved() = change { p ->
         p[CONFIGURED] = true
         p[AUTH_ERROR] = false
-        // The limit is the site's: these credentials may be for another one. A tested connection stores its own next.
+        // The limit and the types are the site's: these credentials may be for another one. A tested connection
+        // stores its own next.
         p.remove(MAX_UPLOAD)
+        p.remove(PHOTO_TYPES)
     }
 
     /** `Test connection` of the saved credentials succeeded: keeps what the site reported and lets sending resume. */
@@ -116,7 +126,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         p[CATEGORIES] = encode(status.categories)
         p[DEFAULT_SLUG] = status.defaultCategory.slug
         p[DEFAULT_NAME] = status.defaultCategory.name
-        p[MAX_UPLOAD] = status.maxUploadBytes
+        p.uploadRules(status)
         p[CONFIGURED] = true
         p[AUTH_ERROR] = false
     }
@@ -142,6 +152,11 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         this[CATEGORY] = to.slug
     }
 
+    private fun MutablePreferences.uploadRules(status: SiteStatus) {
+        this[MAX_UPLOAD] = status.maxUploadBytes
+        if (status.photoTypes == null) remove(PHOTO_TYPES) else this[PHOTO_TYPES] = status.photoTypes
+    }
+
     private fun MutablePreferences.clearNotice() {
         remove(NOTICE_MISSING)
         remove(NOTICE_USED)
@@ -162,6 +177,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
             categories = decode(p[CATEGORIES]),
             defaultCategory = if (defaultSlug != null && defaultName != null) Category(defaultSlug, defaultName) else null,
             maxUploadBytes = p[MAX_UPLOAD],
+            photoTypes = p[PHOTO_TYPES],
             configured = p[CONFIGURED] ?: false,
             authError = p[AUTH_ERROR] ?: false,
             categoryNotice = if (missing != null && used != null) CategoryNotice(missing, used) else null,
@@ -196,6 +212,7 @@ class SettingsStore(private val store: DataStore<Preferences>) {
         private val DEFAULT_SLUG = stringPreferencesKey("default_category_slug")
         private val DEFAULT_NAME = stringPreferencesKey("default_category_name")
         private val MAX_UPLOAD = longPreferencesKey("max_upload_bytes")
+        private val PHOTO_TYPES = stringSetPreferencesKey("photo_types")
         private val CONFIGURED = booleanPreferencesKey("configured")
         private val AUTH_ERROR = booleanPreferencesKey("auth_error")
         private val NOTICE_MISSING = stringPreferencesKey("category_notice_missing")
