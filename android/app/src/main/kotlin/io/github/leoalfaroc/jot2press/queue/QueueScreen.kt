@@ -44,6 +44,7 @@ import io.github.leoalfaroc.jot2press.data.oneLine
 import io.github.leoalfaroc.jot2press.data.time
 import io.github.leoalfaroc.jot2press.data.withPhotos
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
+import io.github.leoalfaroc.jot2press.ui.ConfirmOrKeep
 import io.github.leoalfaroc.jot2press.ui.IconButton
 import io.github.leoalfaroc.jot2press.ui.Jot2PressType
 import io.github.leoalfaroc.jot2press.ui.LocalJot2PressColors
@@ -202,11 +203,9 @@ private fun EntryRow(
         // Two lines, not one: the row keeps enough of the entry to say which it is.
         Text(row.text, style = Jot2PressType.body, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
         row.detail?.let { Text(it, style = Jot2PressType.note, color = colors.quiet) }
-        // `Confirm delete` appears on the side opposite to `Delete`, so that a double tap in one place cannot delete.
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             if (confirming && row.canDelete) {
-                TextAction("Confirm delete", onConfirmDelete, danger = true, flush = Alignment.Start)
-                TextAction("Keep", onKeep, flush = Alignment.End)
+                ConfirmOrKeep("Confirm delete", onConfirmDelete, onKeep)
             } else {
                 Spacer(Modifier.size(0.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

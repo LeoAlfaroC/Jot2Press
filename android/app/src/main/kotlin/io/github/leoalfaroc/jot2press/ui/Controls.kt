@@ -79,6 +79,16 @@ fun TextAction(
     }
 }
 
+/**
+ * `Confirm …` against the start edge and `Keep` against the end one, for a row that spreads its items apart. The
+ * confirmation sits on the side opposite to the action that asked for it, so that a double tap in one place cannot confirm.
+ */
+@Composable
+fun ConfirmOrKeep(label: String, onConfirm: () -> Unit, onKeep: () -> Unit) {
+    TextAction(label, onConfirm, danger = true, flush = Alignment.Start)
+    TextAction("Keep", onKeep, flush = Alignment.End)
+}
+
 /** An icon without a border, on a 48 dp target; `label` is what TalkBack says. Disabled, it turns quiet and stops answering. */
 @Composable
 fun IconButton(

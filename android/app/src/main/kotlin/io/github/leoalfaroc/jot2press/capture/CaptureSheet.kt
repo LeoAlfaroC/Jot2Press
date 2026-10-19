@@ -79,6 +79,7 @@ import io.github.leoalfaroc.jot2press.data.DraftPhoto
 import io.github.leoalfaroc.jot2press.ui.Badge
 import io.github.leoalfaroc.jot2press.ui.Button
 import io.github.leoalfaroc.jot2press.ui.CONFIRM_MILLIS
+import io.github.leoalfaroc.jot2press.ui.ConfirmOrKeep
 import io.github.leoalfaroc.jot2press.ui.Corner
 import io.github.leoalfaroc.jot2press.ui.IconButton
 import io.github.leoalfaroc.jot2press.ui.Jot2PressColors
@@ -284,16 +285,14 @@ private fun LastEntryLine(last: LastEntry, canEdit: Boolean, actions: CaptureAct
     val haptics = LocalHapticFeedback.current
     if (last.confirmingDelete) {
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            TextAction(
+            ConfirmOrKeep(
                 "Confirm delete",
-                {
+                onConfirm = {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     actions.confirmDeleteLast()
                 },
-                danger = true,
-                flush = Alignment.Start,
+                onKeep = actions.keep,
             )
-            TextAction("Keep", actions.keep, flush = Alignment.End)
         }
         return
     }
@@ -325,8 +324,7 @@ private fun Header(ui: CaptureUi, actions: CaptureActions) {
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
         if (ui.confirmingDiscard) {
-            TextAction("Confirm discard", actions.confirmDiscard, danger = true, flush = Alignment.Start)
-            TextAction("Keep", actions.keep, flush = Alignment.End)
+            ConfirmOrKeep("Confirm discard", actions.confirmDiscard, actions.keep)
         } else {
             Day(ui.day)
             if (ui.hasContent) TextAction("Discard", actions.askDiscard, flush = Alignment.End)
