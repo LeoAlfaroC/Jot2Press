@@ -12,7 +12,6 @@ data class QueueFacts(
     val failed: Int = 0,
     /** Waiting entries the server has been failing on for more than an hour. */
     val stuck: Int = 0,
-    val hasDraft: Boolean = false,
 ) {
     val total: Int get() = waiting + failed
 }
@@ -21,7 +20,6 @@ fun queueFacts(entries: List<Entry>, now: Long): QueueFacts = QueueFacts(
     waiting = entries.count { it.state == EntryState.GRACE || it.state == EntryState.PENDING },
     failed = entries.count { it.state == EntryState.FAILED },
     stuck = entries.count { it.isStuck(now) },
-    hasDraft = entries.any { it.state == EntryState.DRAFT },
 )
 
 /** The one line that the queue row in settings shows. */

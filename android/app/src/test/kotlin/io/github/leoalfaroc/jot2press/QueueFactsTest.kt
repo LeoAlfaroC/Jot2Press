@@ -21,7 +21,7 @@ class QueueFactsTest {
     fun `the queue is counted by state, and the draft is not part of it`() {
         val facts = facts(entry(EntryState.DRAFT), entry(EntryState.GRACE), entry(EntryState.PENDING), entry(EntryState.FAILED))
 
-        assertEquals(QueueFacts(waiting = 2, failed = 1, stuck = 0, hasDraft = true), facts)
+        assertEquals(QueueFacts(waiting = 2, failed = 1, stuck = 0), facts)
         assertEquals(3, facts.total)
     }
 
