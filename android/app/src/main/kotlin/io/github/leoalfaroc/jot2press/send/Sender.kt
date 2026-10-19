@@ -169,6 +169,7 @@ class Sender(
                 queue.markFailed(entry.id, "Photo $number could not be read on the phone.")
                 return Step.Again
             }
+            val size = ready.file.length()
             val result = try {
                 api.uploadPhoto(photo.id, ready.file, ready.mediaType)
             } finally {
@@ -186,9 +187,11 @@ class Sender(
                         return refused(result, signIn, entry)
                     }
                     if (result.status != 413) return refused(result, signIn, entry)
-                    // WordPress reported a limit the web server in front of it does not allow.
-                    (api.status() as? ApiResult.Ok)?.let { settings.setMaxUploadBytes(it.value.maxUploadBytes) }
-                    val reported = settings.get().maxUploadBytes ?: limit
+                    // WordPress reported a limit the web server in front of it does not allow. Only the refusal says
+                    // how much less it takes: half of what it refused, so that Retry sends a smaller photo, and a few
+                    // Retries reach even a far lower limit. A tested connection puts WordPress's figure back.
+                    val reported = (api.status() as? ApiResult.Ok)?.value?.also { settings.setUploadRules(it) }?.maxUploadBytes ?: limit
+                    settings.setMaxUploadBytes(minOf(reported, size / 2))
                     return refused(
                         result,
                         signIn,

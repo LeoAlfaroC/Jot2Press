@@ -278,7 +278,29 @@ class SenderTest {
             "Photo 1 of 2 is larger than the site accepts. The web server's upload limit is lower than the 2 MB WordPress reports.",
             failed.lastError,
         )
-        assertEquals(2_097_152L, settings.get().maxUploadBytes)
+        assertTrue(server.takeRequest().url.encodedPath.endsWith("/photos"))
+        assertTrue(server.takeRequest().url.encodedPath.endsWith("/status"))
+    }
+
+    @Test
+    fun `after the web server rejects a photo as too large, Retry prepares it for half that size`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val limits = mutableListOf<Long>()
+        prepare = { source, limit, _ -> limits += limit; Prepared(source, "image/jpeg", temporary = false) }
+        val (entry, photos) = pendingWithPhotos("Coffee", 1)
+        val size = files.file(photos[0].file).length()
+        answer(413, "<html>Request Entity Too Large</html>")
+        status(67_108_864)
+        sender.run()
+
+        queue.retry(entry.id)
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+        // WordPress still reports 64 MB: only what the web server refused says how much less it takes.
+        assertEquals(listOf(67_108_864L, size / 2), limits)
+        assertNull(stored(entry.id))
     }
 
     @Test
