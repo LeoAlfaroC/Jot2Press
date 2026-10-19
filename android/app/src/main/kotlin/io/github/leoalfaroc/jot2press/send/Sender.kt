@@ -61,6 +61,12 @@ fun verdict(refused: ApiResult.Refused): Verdict = when {
 private const val NO_ROUTE = "rest_no_route"
 private const val TYPE_NOT_ALLOWED = "photo_type_not_allowed"
 
+/** What a refusal says to the user: the site's own message, unless the plugin does not answer at all. */
+fun describe(refused: ApiResult.Refused): String =
+    if (refused.code == NO_ROUTE) Sender.PLUGIN_MISSING else refused.message
+
+fun describe(unreachable: ApiResult.Unreachable): String = "Could not reach the site: ${unreachable.reason}"
+
 /** The plugin's 403s about one entry: the account may publish, but not upload its photos or edit its day's post. */
 private val ENTRY_REFUSALS = setOf("cannot_upload_photos", "cannot_edit_day_post")
 
@@ -259,7 +265,7 @@ class Sender(
      * left waiting for days shows stuck, and why.
      */
     private suspend fun unreachable(result: ApiResult.Unreachable, entry: Entry): Step {
-        if (networkUp()) queue.recordServerError(entry.id, "Could not reach the site: ${result.reason}")
+        if (networkUp()) queue.recordServerError(entry.id, describe(result))
         return Step.Stop(Outcome.RETRY)
     }
 
@@ -304,9 +310,6 @@ class Sender(
         val lng = entry.lng ?: return null
         return if (entry.attachLocation) Coordinates(lat, lng) else null
     }
-
-    private fun describe(refused: ApiResult.Refused): String =
-        if (refused.code == NO_ROUTE) PLUGIN_MISSING else refused.message
 
     companion object {
         const val PLUGIN_MISSING = "The ${BuildConfig.PLUGIN_NAME} plugin does not answer on the site. Check that it is installed and active."

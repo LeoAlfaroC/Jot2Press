@@ -13,7 +13,7 @@ import io.github.leoalfaroc.jot2press.location.Permission
 import io.github.leoalfaroc.jot2press.net.ApiResult
 import io.github.leoalfaroc.jot2press.queueFacts
 import io.github.leoalfaroc.jot2press.queueSummary
-import io.github.leoalfaroc.jot2press.send.Sender
+import io.github.leoalfaroc.jot2press.send.describe
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -183,14 +183,8 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
                 }
                 TestState.Passed("Connected as ${result.value.user}. Upload limit: ${megabytes(result.value.maxUploadBytes)}.")
             }
-            is ApiResult.Refused -> TestState.Failed(
-                when {
-                    result.status == 401 -> REJECTED_ERROR
-                    result.code == "rest_no_route" -> Sender.PLUGIN_MISSING
-                    else -> result.message
-                },
-            )
-            is ApiResult.Unreachable -> TestState.Failed("Could not reach the site: ${result.reason}")
+            is ApiResult.Refused -> TestState.Failed(if (result.status == 401) REJECTED_ERROR else describe(result))
+            is ApiResult.Unreachable -> TestState.Failed(describe(result))
         }
         form.update { it.copy(test = test) }
     }
