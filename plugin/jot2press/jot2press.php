@@ -855,8 +855,9 @@ function jot2press_handle_photo( WP_REST_Request $request ) {
 	}
 
 	if ( is_wp_error( $attachment_id ) ) {
-		// The file was checked above, so what failed is the server's side of the store.
-		return jot2press_error( 'jot2press_failure', 'The photo could not be stored.', 500 );
+		// The file was checked above, so what failed is the server's side of the store. WordPress's message, meant for
+		// the person uploading, says what to fix: a full quota, a folder it cannot write, a plugin that refused the file.
+		return jot2press_error( 'jot2press_failure', 'The photo could not be stored: ' . $attachment_id->get_error_message(), 500 );
 	}
 
 	jot2press_protect_dirs( dirname( get_attached_file( $attachment_id ) ) );

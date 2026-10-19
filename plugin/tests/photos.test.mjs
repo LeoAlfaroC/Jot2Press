@@ -216,7 +216,7 @@ test( 'the journal upload folders cannot be listed', async () => {
 	}
 } );
 
-test( 'a photo the server cannot store is answered as a server failure', async () => {
+test( 'a photo the server cannot store is answered as a server failure, with the reason WordPress gave', async () => {
 	// Inside the test site: hand the handler a real JPEG that PHP did not receive as an upload, which WordPress refuses to move.
 	const bytes = fixture( 'photo.jpg' ).toString( 'base64' );
 	const php = `
@@ -235,7 +235,8 @@ test( 'a photo the server cannot store is answered as a server failure', async (
 	const [ status, body ] = JSON.parse( output.match( /RESULT:(.*):END/s )[ 1 ] );
 	assert.equal( status, 500 );
 	assert.equal( body.code, 'jot2press_failure' );
-	assert.equal( body.message, 'The photo could not be stored.' );
+	// WordPress's own words say what to fix on the server: a full quota, a folder it cannot write, a plugin that refused.
+	assert.equal( body.message, 'The photo could not be stored: Specified file failed upload test.' );
 } );
 
 test( 'an upload the server could not receive is answered as a server failure, so the app tries it again', () => {
