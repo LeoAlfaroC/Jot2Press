@@ -86,6 +86,13 @@ class CaptureSheetTest {
     }
 
     @Test
+    fun `text that could not be saved shows a line saying so`() {
+        show(blank.copy(text = "Coffee", unsaved = true))
+
+        compose.onNodeWithText(UNSAVED_NOTICE).assertExists()
+    }
+
+    @Test
     fun `what is typed goes to the model`() {
         show(blank)
 

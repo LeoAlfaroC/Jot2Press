@@ -33,6 +33,7 @@ import io.github.leoalfaroc.jot2press.send.Scheduler
 import io.github.leoalfaroc.jot2press.send.Sender
 import io.github.leoalfaroc.jot2press.widget.Jot2PressWidget
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,7 +128,8 @@ fun realContainer(app: Application): AppContainer {
         scheduler = Scheduler(WorkManager.getInstance(app), queue, settings, PhoneClock),
         sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(app.cacheDir)::prepare),
         apiFor = apiFor,
-        scope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
+        // A failure in work launched here ends that work only: the app does not crash for it.
+        scope = CoroutineScope(Dispatchers.Default + SupervisorJob() + CoroutineExceptionHandler { _, _ -> }),
         onUnmeteredNetwork = { connectivity.activeNetwork != null && !connectivity.isActiveNetworkMetered },
         refreshWidget = { Jot2PressWidget().updateAll(app) },
         dialogs = dialogs,

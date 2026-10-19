@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import io.github.leoalfaroc.jot2press.Jot2PressApp
 import io.github.leoalfaroc.jot2press.data.Queue
 import io.github.leoalfaroc.jot2press.data.SettingsStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.time.Clock
 import java.util.concurrent.TimeUnit
@@ -77,7 +78,14 @@ class Scheduler(
 class SendWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val container = (applicationContext as Jot2PressApp).container
-        val result = if (container.sender.run() == Sender.Outcome.RETRY) Result.retry() else Result.success()
+        val result = try {
+            if (container.sender.run() == Sender.Outcome.RETRY) Result.retry() else Result.success()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A failure ends the job for good; storage that failed once may work on the next try.
+            Result.retry()
+        }
         // An entry becomes stuck by the passing of time alone, so the widget is told after every run.
         container.redrawWidget()
         return result

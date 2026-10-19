@@ -66,7 +66,9 @@ class TestWorld(folder: File) {
     val scheduler: Scheduler
     /** Every site address leads to the simulated site, which has no https. */
     val apiFor: (Credentials) -> Jot2PressApi = { HttpJot2PressApi(jot2PressHttpClient(), it.copy(siteUrl = server.url("/").toString())) }
-    val sender = Sender(queue, settings, credentials = { credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(File(folder, "cache"))::prepare, deviceLocale = { Locale.ENGLISH })
+    /** When set, reading the credentials for a send throws it. */
+    var credentialsFailure: Exception? = null
+    val sender = Sender(queue, settings, credentials = { credentialsFailure?.let { throw it }; credentials.get() }, apiFor = apiFor, files = photoFiles, prepare = PhotoEncoder(File(folder, "cache"))::prepare, deviceLocale = { Locale.ENGLISH })
     var widgetRefreshes = 0
     /** When set, the widget redraw throws it. */
     var widgetFailure: Exception? = null
@@ -152,6 +154,9 @@ class TestWorld(folder: File) {
     suspend fun entries(): List<Entry> = queue.observe().first()
 
     suspend fun jobs(name: String): List<WorkInfo> = work.getWorkInfosForUniqueWorkFlow(name).first()
+
+    /** From now on every read and write of the queue throws, as when the phone's storage fails. */
+    fun breakQueue() = db.close()
 
     fun close() {
         server.close()

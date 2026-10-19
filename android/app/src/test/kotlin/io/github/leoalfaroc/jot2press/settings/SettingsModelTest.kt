@@ -145,6 +145,21 @@ class SettingsModelTest {
     }
 
     @Test
+    fun `a sign-in that cannot be stored says so and stays open for typing`() = runTest {
+        model.load()
+        type()
+        world.box.sealBroken = true
+
+        model.save()
+
+        val ui = ui()
+        assertNull(world.credentials.get())
+        assertTrue(ui.form.editing)
+        assertFalse(ui.form.saved)
+        assertEquals(TestState.Failed(STORE_ERROR), ui.form.test)
+    }
+
+    @Test
     fun `Save lets entries held by a rejected sign-in go again`() = runTest {
         world.connect()
         world.settings.setAuthError(true)

@@ -118,6 +118,7 @@ class CaptureActions(
 )
 
 const val SIGN_IN_NOTICE = "The site rejected the sign-in. Entries wait on the phone."
+const val UNSAVED_NOTICE = "This text could not be saved on the phone. Its storage may be full."
 
 /** The whole window: the sheet at the bottom, on top of the keyboard. A tap anywhere else closes the dialog. */
 @Composable
@@ -190,6 +191,7 @@ fun CaptureSheet(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         ui.trouble?.let { Notice(it, actions) }
+        if (ui.unsaved) Unsaved()
         ui.lastEntry?.let { LastEntryLine(it, canEdit = ui.canEditLast, actions = actions) }
         Header(ui, actions)
         Editor(ui, actions)
@@ -261,6 +263,18 @@ private fun Notice(trouble: Trouble, actions: CaptureActions) {
         }
         HorizontalDivider(color = colors.line)
     }
+}
+
+/** The editor could not be stored: its text lives on screen only until a save works. */
+@Composable
+private fun Unsaved() {
+    val colors = LocalJot2PressColors.current
+    Text(
+        UNSAVED_NOTICE,
+        Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        style = Jot2PressType.label,
+        color = colors.danger,
+    )
 }
 
 /** One plain line, above the day so that it cannot be read as the title of the entry being written. */

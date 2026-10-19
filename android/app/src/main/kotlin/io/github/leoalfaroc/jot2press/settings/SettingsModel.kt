@@ -14,6 +14,7 @@ import io.github.leoalfaroc.jot2press.net.ApiResult
 import io.github.leoalfaroc.jot2press.queueFacts
 import io.github.leoalfaroc.jot2press.queueSummary
 import io.github.leoalfaroc.jot2press.send.Sender
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -71,6 +72,7 @@ const val PATTERN_ERROR = "Not a date pattern. It was not saved."
 const val URL_ERROR = "The site URL must be an https:// address."
 const val SIGN_IN_ERROR = "Enter the username and the application password."
 const val REJECTED_ERROR = "The site rejected the username or the application password."
+const val STORE_ERROR = "The sign-in could not be stored on this phone. Try Save again."
 
 /** The settings screen without its screen. */
 class SettingsModel(private val container: AppContainer, private val deviceLocale: () -> Locale = { Locale.getDefault() }) {
@@ -148,7 +150,15 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
         val typed = form.value
         if (!typed.editing || typed.test == TestState.Running) return
         val signIn = signIn(typed) ?: return
-        container.credentials.save(signIn)
+        try {
+            container.credentials.save(signIn)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The Keystore or the storage failed: what is typed stays, for another Save.
+            form.update { it.copy(test = TestState.Failed(STORE_ERROR), saved = false) }
+            return
+        }
         stored = signIn
         settings.credentialsSaved()
         accepted?.takeIf { it.first == signIn }?.let { settings.connectionSucceeded(it.second) }

@@ -114,6 +114,22 @@ class SchedulerTest {
     }
 
     @Test
+    fun `a send that throws leaves the job to be retried`() = runTest {
+        world.connect()
+        world.write("Coffee")
+        world.credentialsFailure = java.io.IOException("The settings could not be read.")
+        world.scheduler.sync()
+        val send = sendJobs().single()
+
+        world.driver.setAllConstraintsMet(send.id)
+        val retried = world.work.getWorkInfoByIdFlow(send.id)
+            .first { it!!.runAttemptCount == 1 && it.state != WorkInfo.State.RUNNING }!!
+
+        assertEquals(WorkInfo.State.ENQUEUED, retried.state)
+        assertEquals(EntryState.PENDING, world.entries().single().state)
+    }
+
+    @Test
     fun `a site that fails leaves the job to be retried`() = runTest {
         world.connect()
         world.server.enqueue(MockResponse.Builder().code(500).body("").build())

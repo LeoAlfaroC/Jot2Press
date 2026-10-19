@@ -14,8 +14,13 @@ fun tempStore(folder: File, scope: CoroutineScope): DataStore<Preferences> =
 /** Stands in for the Android Keystore, which does not exist off a device. It is not encryption. */
 class FakeBox : SecretBox {
     var broken = false
+    /** When set, sealing throws, as a Keystore can after some system updates. */
+    var sealBroken = false
 
-    override fun seal(plain: ByteArray): ByteArray = plain.reversedArray()
+    override fun seal(plain: ByteArray): ByteArray {
+        check(!sealBroken) { "The Keystore failed." }
+        return plain.reversedArray()
+    }
 
     override fun open(sealed: ByteArray): ByteArray {
         check(!broken) { "The key is gone." }

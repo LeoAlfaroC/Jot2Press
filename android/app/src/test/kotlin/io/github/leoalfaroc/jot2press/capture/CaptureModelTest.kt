@@ -59,6 +59,21 @@ class CaptureModelTest {
     }
 
     @Test
+    fun `a draft that cannot be stored says so, and Send keeps the dialog open with the text`() = runTest {
+        val model = opened()
+        model.type("Walked back along the seafront")
+        world.breakQueue()
+
+        model.saveDraft()
+        assertTrue(model.ui.value.unsaved)
+
+        model.send()
+        assertFalse(model.ui.value.closed)
+        assertEquals("Walked back along the seafront", model.ui.value.text)
+        assertTrue(model.ui.value.unsaved)
+    }
+
+    @Test
     fun `closing with text keeps it as the draft, which is there the next time`() = runTest {
         val first = opened()
         first.type("Walked back along the seafront")

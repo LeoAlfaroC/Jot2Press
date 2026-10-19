@@ -12,6 +12,7 @@ import io.github.leoalfaroc.jot2press.location.Locator
 import io.github.leoalfaroc.jot2press.location.Permission
 import io.github.leoalfaroc.jot2press.send.Scheduler
 import io.github.leoalfaroc.jot2press.trouble
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +59,8 @@ data class CaptureUi(
     val showPin: Boolean = false,
     /** The pin: the entry sends where it was written. */
     val pinOn: Boolean = false,
+    /** The last attempt to store the editor failed: what it shows is kept on screen only. */
+    val unsaved: Boolean = false,
 ) {
     val hasContent: Boolean get() = text.isNotBlank() || photos.isNotEmpty()
     val canSend: Boolean get() = hasContent && !confirmingDiscard
@@ -144,7 +147,8 @@ class CaptureModel(
     suspend fun send() = mutex.withLock {
         val now = state.value
         if (!now.canSend || now.closed) return@withLock
-        save()
+        // What could not be stored cannot be sent: the dialog stays open with it.
+        if (!save()) return@withLock
         val attach = now.showPin && now.pinOn
         // An entry sent again after Edit keeps the position it has, and no search resumes for it.
         val searching = attach && queue.draft()?.lat == null
@@ -211,11 +215,21 @@ class CaptureModel(
         look()
     }
 
-    private suspend fun save() {
+    /** Stores the editor as the draft. False when the storage failed: the dialog then says so, instead of losing the text. */
+    private suspend fun save(): Boolean {
         val now = state.value
-        if (!now.ready || now.closed) return
-        // Without a day of its own, the editor holds no entry taken back: one that is still stored has been let go of.
-        queue.saveDraft(now.text, now.photos, afresh = now.entryDay == null)
+        if (!now.ready || now.closed) return true
+        val stored = try {
+            // Without a day of its own, the editor holds no entry taken back: one that is still stored has been let go of.
+            queue.saveDraft(now.text, now.photos, afresh = now.entryDay == null)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+        state.update { it.copy(unsaved = !stored) }
+        return stored
     }
 
     /** Whether the pin shows: `Attach location` on, and a location permission held. Either can change while the dialog is away. */
