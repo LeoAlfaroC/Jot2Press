@@ -124,6 +124,33 @@ class SenderTest {
     )
 
     @Test
+    fun `the entry being sent cannot be deleted, and one waiting behind it can`() = runTest {
+        settings.setMaxUploadBytes(67_108_864)
+        val (sending, _) = pendingWithPhotos("Coffee", 1)
+        val waiting = pending("Tea")
+        var deletedSending: Boolean? = null
+        var deletedWaiting: Boolean? = null
+        whileSending = {
+            whileSending = {}
+            kotlinx.coroutines.runBlocking {
+                assertEquals(sending.id, sender.sending.value)
+                deletedSending = sender.withdraw(sending.id)
+                deletedWaiting = sender.withdraw(waiting.id)
+            }
+        }
+        photoStored()
+        created()
+
+        assertEquals(Sender.Outcome.DONE, sender.run())
+
+        assertEquals(false, deletedSending)
+        assertEquals(true, deletedWaiting)
+        assertEquals(2, server.requestCount)
+        assertNull(sender.sending.value)
+        assertTrue(queue.observe().first().isEmpty())
+    }
+
+    @Test
     fun `photos go first, one per request and in order, then the entry lists them`() = runTest {
         settings.setMaxUploadBytes(67_108_864)
         val (entry, photos) = pendingWithPhotos("Coffee", 2)

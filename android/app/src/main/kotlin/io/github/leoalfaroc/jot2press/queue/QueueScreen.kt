@@ -64,6 +64,8 @@ data class QueueRow(
     /** What the server last answered, for an entry it refused or failed on. */
     val detail: String? = null,
     val canRetry: Boolean = false,
+    /** False for the entry being sent: it may already be on the site. */
+    val canDelete: Boolean = true,
 )
 
 data class QueueUi(
@@ -91,6 +93,8 @@ fun queueUi(
     clock: Clock,
     onUnmeteredNetwork: Boolean,
     photoCounts: Map<String, Int> = emptyMap(),
+    /** The id of the entry being sent at this moment. */
+    sending: String? = null,
 ): QueueUi {
     val now = clock.millis()
     val today = LocalDate.now(clock)
@@ -112,11 +116,13 @@ fun queueUi(
                 status = when {
                     entry.state == EntryState.GRACE -> "In its grace window"
                     entry.state == EntryState.FAILED -> FAILED_STATUS
+                    entry.id == sending -> "Sending"
                     since != null -> "Server error since $since · retrying"
                     else -> "Waiting"
                 },
                 detail = entry.lastError,
                 canRetry = entry.state == EntryState.FAILED,
+                canDelete = entry.id != sending,
             )
         },
     )
@@ -197,14 +203,14 @@ private fun EntryRow(
         row.detail?.let { Text(it, style = Jot2PressType.note, color = colors.quiet) }
         // `Confirm delete` appears on the side opposite to `Delete`, so that a double tap in one place cannot delete.
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            if (confirming) {
+            if (confirming && row.canDelete) {
                 TextAction("Confirm delete", onConfirmDelete, danger = true, flush = Alignment.Start)
                 TextAction("Keep", onKeep, flush = Alignment.End)
             } else {
                 Spacer(Modifier.size(0.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (row.canRetry) TextAction("Retry", onRetry)
-                    TextAction("Delete", onAskDelete, flush = Alignment.End)
+                    if (row.canDelete) TextAction("Delete", onAskDelete, flush = Alignment.End)
                 }
             }
         }

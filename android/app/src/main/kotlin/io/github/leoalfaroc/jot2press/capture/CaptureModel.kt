@@ -211,7 +211,8 @@ class CaptureModel(
     suspend fun confirmDeleteLast() = mutex.withLock {
         val last = state.value.lastEntry
         if (last == null || !last.confirmingDelete) return@withLock
-        queue.delete(last.id)
+        // Once its window has ended the entry is the sender's: the line then goes, and the entry is sent.
+        queue.deleteInGrace(last.id)
         look()
     }
 

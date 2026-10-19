@@ -66,6 +66,12 @@ class QueueScreenTest {
     }
 
     @Test
+    fun `an entry that cannot be deleted offers no Delete`() {
+        show(QueueUi(rows = listOf(waiting.copy(status = "Sending", canDelete = false))))
+        compose.onNodeWithText("Delete").assertDoesNotExist()
+    }
+
+    @Test
     fun `Retry asks for the failed entry to be sent again`() {
         show(QueueUi(rows = listOf(failed)))
 

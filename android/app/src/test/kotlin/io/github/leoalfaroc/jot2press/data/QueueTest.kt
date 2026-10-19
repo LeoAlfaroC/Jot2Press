@@ -390,6 +390,21 @@ class QueueTest {
         assertTrue(queue.observe().first().isEmpty())
     }
 
+    @Test
+    fun `an entry is deleted from its grace window only while it is still in it`() = runTest {
+        // `sent` moves the clock on by a minute: this window has ended.
+        val entry = sent("Coffee", graceSeconds = 60)
+        queue.promoteDue()
+
+        assertFalse(queue.deleteInGrace(entry.id))
+        assertEquals(EntryState.PENDING, queue.observe().first().single().state)
+
+        queue.saveDraft("Tea")
+        val next = queue.send(graceSeconds = 60)!!
+        assertTrue(queue.deleteInGrace(next.id))
+        assertEquals(listOf(entry.id), queue.observe().first().map { it.id })
+    }
+
     private fun fix(accuracy: Float, lat: Double) = Fix(lat, -74.08175, accuracy, clock.millis())
 
     @Test

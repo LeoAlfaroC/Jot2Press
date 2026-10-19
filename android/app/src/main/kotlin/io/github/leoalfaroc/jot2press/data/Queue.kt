@@ -127,6 +127,16 @@ class Queue(
         files.delete(db.withTransaction { remove(id) })
     }
 
+    /**
+     * Deletes an entry that is still in its grace window. False, and nothing changes, once the window has ended:
+     * the sender may already be sending it.
+     */
+    suspend fun deleteInGrace(id: String): Boolean {
+        val gone = db.withTransaction { if (dao.byId(id)?.isInGrace() == true) remove(id) else null } ?: return false
+        files.delete(gone)
+        return true
+    }
+
     /** The next entry to send: the oldest `writtenAt` first. */
     suspend fun nextPending(): Entry? = dao.nextPending()
 

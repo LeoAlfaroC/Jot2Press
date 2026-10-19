@@ -5,6 +5,8 @@ import io.github.leoalfaroc.jot2press.data.Entry
 import io.github.leoalfaroc.jot2press.data.EntryState
 import io.github.leoalfaroc.jot2press.data.Settings
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 
@@ -34,6 +36,15 @@ class QueueUiTest {
             ),
             ui.rows,
         )
+    }
+
+    @Test
+    fun `the entry being sent says so and cannot be deleted`() {
+        val rows = queueUi(listOf(pending, failed), Settings(), clock, true, sending = "pending").rows
+
+        assertEquals("Sending", rows[0].status)
+        assertFalse(rows[0].canDelete)
+        assertTrue(rows[1].canDelete)
     }
 
     @Test

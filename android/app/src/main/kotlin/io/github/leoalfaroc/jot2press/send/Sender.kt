@@ -17,6 +17,9 @@ import io.github.leoalfaroc.jot2press.net.Jot2PressApi
 import io.github.leoalfaroc.jot2press.settings.megabytes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -78,6 +81,23 @@ class Sender(
 
     private val oneAtATime = Mutex()
 
+    /** Held while the next entry is picked and while one is deleted: an entry cannot be both. */
+    private val claim = Mutex()
+    private val inFlight = MutableStateFlow<String?>(null)
+
+    /** The entry being sent at this moment, or null. Its requests may already have reached the site. */
+    val sending: StateFlow<String?> = inFlight.asStateFlow()
+
+    /**
+     * Deletes an entry from the queue, unless it is the one being sent: deleting that one could no longer
+     * keep it off the site. Returns whether it was deleted.
+     */
+    suspend fun withdraw(id: String): Boolean = claim.withLock {
+        if (inFlight.value == id) return@withLock false
+        queue.delete(id)
+        true
+    }
+
     /**
      * No credentials to send with. After a Save this means they can no longer be decrypted (the Keystore key was lost):
      * the user fixes it the same way as a rejected sign-in, by saving them again.
@@ -102,12 +122,16 @@ class Sender(
             if (settings.get().authError) return Outcome.HELD
             val signIn = credentials() ?: return unreadable()
             queue.promoteDue()
-            val entry = queue.nextPending() ?: return Outcome.DONE
-            val api = apiFor(signIn)
-            val photos = queue.photosOf(entry.id)
-            var step = sendPhotos(api, signIn, entry, photos)
-            if (step == Step.Go) step = sendEntry(api, signIn, entry, photos)
-            if (step is Step.Stop) return step.outcome
+            val entry = claim.withLock { queue.nextPending()?.also { inFlight.value = it.id } } ?: return Outcome.DONE
+            try {
+                val api = apiFor(signIn)
+                val photos = queue.photosOf(entry.id)
+                var step = sendPhotos(api, signIn, entry, photos)
+                if (step == Step.Go) step = sendEntry(api, signIn, entry, photos)
+                if (step is Step.Stop) return step.outcome
+            } finally {
+                inFlight.value = null
+            }
         }
     }
 
