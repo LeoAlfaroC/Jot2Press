@@ -934,8 +934,22 @@ function jot2press_schedule_cleanup(): void {
 	}
 }
 
-function jot2press_deactivate(): void {
-	wp_clear_scheduled_hook( 'jot2press_cleanup' );
+/**
+ * Takes the cleanup off the schedule, its continuations included, on every site of a network when the plugin was
+ * active on all of them.
+ *
+ * @param bool $network_wide Whether the plugin is deactivated for the whole network.
+ */
+function jot2press_deactivate( $network_wide = false ): void {
+	if ( ! is_multisite() || ! $network_wide ) {
+		wp_unschedule_hook( 'jot2press_cleanup' );
+		return;
+	}
+	foreach ( get_sites( array( 'fields' => 'ids', 'number' => 0 ) ) as $site_id ) {
+		switch_to_blog( $site_id );
+		wp_unschedule_hook( 'jot2press_cleanup' );
+		restore_current_blog();
+	}
 }
 
 /**

@@ -274,3 +274,16 @@ test( 'a cleanup that runs out of time leaves the rest to a run a minute later',
 	}
 	assert.deepEqual( continuations(), [] );
 } );
+
+test( 'deactivating the plugin takes the cleanup off the schedule, a continuation waiting to run included', () => {
+	const php = `
+		jot2press_schedule_cleanup();
+		wp_schedule_single_event( time() + MINUTE_IN_SECONDS, 'jot2press_cleanup', array( 42 ) );
+		jot2press_deactivate( false );
+		$left = 0;
+		foreach ( _get_cron_array() as $hooks ) { $left += count( $hooks['jot2press_cleanup'] ?? array() ); }
+		jot2press_schedule_cleanup();
+		echo 'RESULT:' . $left . ':END';
+	`;
+	assert.equal( wp( 'eval', php ).match( /RESULT:(.*):END/s )[ 1 ], '0' );
+} );
