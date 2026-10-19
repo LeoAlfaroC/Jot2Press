@@ -145,8 +145,9 @@ class CaptureViewModel(
         }
     }
 
-    suspend fun thumbnailOf(photo: DraftPhoto, sizePx: Int): ImageBitmap? =
-        withContext(Dispatchers.IO) { thumbnail(files.file(photo.file), sizePx) }
+    private val thumbnails = Thumbnails { photo, sizePx -> thumbnail(files.file(photo.file), sizePx) }
+
+    suspend fun thumbnailOf(photo: DraftPhoto, sizePx: Int): ImageBitmap? = thumbnails.of(photo, sizePx)
 
     /** The dialog is going away: what is in the editor is kept now, not when typing next pauses. */
     fun saveNow() {
