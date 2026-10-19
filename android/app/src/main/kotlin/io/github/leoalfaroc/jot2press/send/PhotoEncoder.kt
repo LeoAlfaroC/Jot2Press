@@ -28,8 +28,7 @@ class PhotoEncoder(private val cache: File) {
         if (kind.mediaType != null && source.length() <= limit) return Prepared(source, kind.mediaType, temporary = false)
 
         val (width, height) = imageSize(source) ?: throw UnreadablePhoto()
-        var sample = 1
-        while (maxOf(width, height) / sample > MAX_DECODE_SIDE) sample *= 2
+        var sample = sampleSize(width, height, limit)
         while (true) {
             // The size is known to be an image, so a failed decode or a lack of memory is not "unreadable": try again at half the size.
             val prepared = try {
@@ -106,11 +105,32 @@ class PhotoEncoder(private val cache: File) {
         const val JPEG = "image/jpeg"
         val QUALITIES = listOf(90, 80, 70, 60)
         const val SHRINK = 0.8f
-        const val MIN_SIDE = 16
-        /** A 200 MP photo would need some 800 MB of pixels: larger ones are read at a power-of-two fraction. */
-        const val MAX_DECODE_SIDE = 8192
     }
 }
+
+/**
+ * The power-of-two fraction to read a photo at: at most [MAX_DECODE_SIDE] pixels long, and no larger than the limit
+ * needs. A JPEG at the qualities tried takes under a quarter of a byte a pixel, so a [limit] of bytes holds about four
+ * times as many pixels; reading more would only be shrunk away later, after costly encodes at full size. The fraction
+ * never leaves fewer pixels than that, nor a side under [MIN_SIDE].
+ */
+internal fun sampleSize(width: Int, height: Int, limit: Long): Int {
+    var sample = 1
+    while (maxOf(width, height) / sample > MAX_DECODE_SIDE) sample *= 2
+    val pixels = limit.coerceAtMost(Long.MAX_VALUE / PIXELS_PER_BYTE) * PIXELS_PER_BYTE
+    while (true) {
+        val next = sample * 2
+        val (w, h) = width / next to height / next
+        if (minOf(w, h) < MIN_SIDE || w.toLong() * h < pixels) return sample
+        sample = next
+    }
+}
+
+private const val PIXELS_PER_BYTE = 4L
+private const val MIN_SIDE = 16
+
+/** Some 50 MB of pixels: a 50 MP photo is read at half its size, and turning it upright needs as much again. */
+private const val MAX_DECODE_SIDE = 4096
 
 /** Width and height as stored, before any rotation. Null when it is not an image. */
 fun imageSize(file: File): Pair<Int, Int>? {

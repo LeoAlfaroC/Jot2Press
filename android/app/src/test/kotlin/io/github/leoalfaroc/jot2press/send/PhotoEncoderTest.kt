@@ -130,12 +130,24 @@ class PhotoEncoderTest {
     }
 
     @Test
-    fun `a huge photo is read at most 8192 pixels long`() {
-        val source = write(Bitmap.createBitmap(9000, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GRAY) }, Bitmap.CompressFormat.PNG)
+    fun `a huge photo is read at most 4096 pixels long`() {
+        val source = write(noisy(9000, 40), Bitmap.CompressFormat.PNG)
 
-        val sent = encoder.prepare(source, limit = 1)
+        // Just over the limit: the first quality tried fits, so nothing is shrunk after the read.
+        val sent = encoder.prepare(source, limit = source.length() - 1)
 
-        assertTrue(size(sent.file).first <= 8192)
+        assertTrue(size(sent.file).first.toString(), size(sent.file).first <= 4096)
+    }
+
+    @Test
+    fun `a photo is read at the smallest fraction that still has the pixels the limit can hold`() {
+        // About four pixels a byte: a JPEG at the qualities tried takes less than a quarter of a byte a pixel.
+        assertEquals("50 MP for 8 MB: halved, to under 4096 pixels long", 2, sampleSize(8160, 6120, 8_000_000))
+        assertEquals("50 MP for 2 MB: a quarter would leave fewer pixels than 2 MB holds", 2, sampleSize(8160, 6120, 2_000_000))
+        assertEquals("12 MP for 2 MB: half would leave fewer pixels than 2 MB holds", 1, sampleSize(4000, 3000, 2_000_000))
+        assertEquals(2, sampleSize(800, 600, 20_000))
+        assertEquals("never under 16 pixels on a side", 2, sampleSize(32, 32, 1))
+        assertEquals(1, sampleSize(64, 48, 1_000_000))
     }
 
     @Test(expected = UnreadablePhoto::class)
