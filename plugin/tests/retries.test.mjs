@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { test } from 'node:test';
-import { api, at, dayAllocator, lockName, pluginDir, readPost, sendEntry, uuid, wp } from './helpers.mjs';
+import { api, at, dayAllocator, holdLock, readPost, sendEntry, uploadPhoto, uuid, wp } from './helpers.mjs';
 
 const day = dayAllocator( 2 );
 
@@ -65,28 +64,36 @@ test( 'the same entry sent twice at once is stored once', async () => {
 
 test( 'an entry answers 503 while the day is locked and succeeds afterwards', async () => {
 	const d = day();
-	// Hold the day's lock from a separate database connection for 9 seconds.
-	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('${ lockName( d ) }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
-	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
-	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
-	await new Promise( ( resolve, reject ) => {
-		const timer = setTimeout( () => reject( new Error( 'The lock holder never reported LOCKED.' ) ), 30000 );
-		holder.stdout.on( 'data', ( chunk ) => {
-			if ( chunk.toString().includes( 'LOCKED' ) ) {
-				clearTimeout( timer );
-				resolve();
-			}
-		} );
-	} );
+	const lock = await holdLock( d, 9 );
+	try {
+		const fields = { id: uuid(), written_at: at( d, '12:00:00' ), text: 'Waited.' };
+		const blocked = await sendEntry( fields );
+		assert.equal( blocked.status, 503 );
+		assert.equal( blocked.body.code, 'jot2press_busy' );
 
-	const fields = { id: uuid(), written_at: at( d, '12:00:00' ), text: 'Waited.' };
-	const blocked = await sendEntry( fields );
-	assert.equal( blocked.status, 503 );
-	assert.equal( blocked.body.code, 'jot2press_busy' );
+		await lock.released;
+		const retried = await sendEntry( fields );
+		assert.equal( retried.status, 201 );
+	} finally {
+		lock.release();
+	}
+} );
 
-	await released;
-	const retried = await sendEntry( fields );
-	assert.equal( retried.status, 201 );
+test( 'an entry answers 503 while one of its photos is locked, by an upload or the cleanup, and succeeds afterwards', async () => {
+	const photo = await uploadPhoto();
+	const lock = await holdLock( photo.id, 9 );
+	try {
+		const fields = { id: uuid(), written_at: at( day(), '12:00:00' ), photo_ids: [ photo.id ] };
+		const blocked = await sendEntry( fields );
+		assert.equal( blocked.status, 503 );
+		assert.equal( blocked.body.code, 'jot2press_busy' );
+
+		await lock.released;
+		const retried = await sendEntry( fields );
+		assert.equal( retried.status, 201 );
+	} finally {
+		lock.release();
+	}
 } );
 
 test( 'an entry whose store failed after its text was written is not written again by the retry', async () => {

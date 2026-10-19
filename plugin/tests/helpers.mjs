@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -111,6 +111,32 @@ export async function readMedia( attachmentId ) {
 export function lockName( name ) {
 	const output = wp( 'eval', `echo 'LOCK:' . jot2press_lock_name( ${ JSON.stringify( name ) } ) . ':END';` );
 	return output.match( /LOCK:(.*):END/ )[ 1 ];
+}
+
+/**
+ * Holds a day's or a photo id's database lock from a separate connection for `seconds`, as a request busy with it
+ * would. Resolves once the lock is taken, to `released`, a promise that settles when the lock is let go, and
+ * `release()`, which stops waiting for it (the holder inside the site still sleeps out its time).
+ */
+export async function holdLock( name, seconds ) {
+	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('${ lockName( name ) }', 0)" ); echo "LOCKED\\n"; flush(); sleep( ${ seconds } );`;
+	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
+	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
+	try {
+		await new Promise( ( resolve, reject ) => {
+			const timer = setTimeout( () => reject( new Error( 'The lock holder never reported LOCKED.' ) ), 30000 );
+			holder.stdout.on( 'data', ( chunk ) => {
+				if ( chunk.toString().includes( 'LOCKED' ) ) {
+					clearTimeout( timer );
+					resolve();
+				}
+			} );
+		} );
+	} catch ( error ) {
+		holder.kill();
+		throw error;
+	}
+	return { released, release: () => holder.kill() };
 }
 
 /** Runs a shell command inside the test site's web server container. */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { api, at, authHeader, BASE, dayAllocator, fixture, readMedia, sendEntry, uploadPhoto, uuid, wp } from './helpers.mjs';
+import { api, at, authHeader, BASE, dayAllocator, fixture, holdLock, readMedia, sendEntry, uploadPhoto, uuid, wp } from './helpers.mjs';
 
 const day = dayAllocator( 4 );
 
@@ -202,4 +202,19 @@ test( 'a gallery shortcode that names other photos does not keep this one', asyn
 	runCleanup();
 
 	assert.equal( await mediaStatus( id ), 404 );
+} );
+
+test( 'the cleanup leaves a photo that an entry or an upload is busy with, and deletes it on a later run', async () => {
+	const photo = await uploadPhoto();
+	backdate( photo.body.attachment_id );
+	const lock = await holdLock( photo.id, 9 );
+	try {
+		runCleanup();
+		assert.equal( await mediaStatus( photo.body.attachment_id ), 200 );
+	} finally {
+		await lock.released;
+	}
+
+	runCleanup();
+	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
 } );

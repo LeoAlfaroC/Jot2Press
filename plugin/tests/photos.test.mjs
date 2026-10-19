@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import { test } from 'node:test';
 import {
 	api,
 	authHeader,
 	BASE,
 	fixture,
-	lockName,
-	pluginDir,
+	holdLock,
 	readMedia,
 	uploadPhoto,
 	uuid,
@@ -110,30 +108,17 @@ test( 'a PNG sent under a .jpg name is stored as a PNG', async () => {
 
 test( 'an upload waits its turn while the same photo id is being stored', async () => {
 	const id = uuid();
-	// Hold the photo id's lock from a separate database connection for 9 seconds.
-	const php = `global $wpdb; $wpdb->get_var( "SELECT GET_LOCK('${ lockName( id ) }', 0)" ); echo "LOCKED\\n"; flush(); sleep( 9 );`;
-	const holder = spawn( 'npx', [ 'wp-env', 'run', 'cli', 'wp', 'eval', php ], { cwd: pluginDir } );
-	const released = new Promise( ( resolve ) => holder.on( 'close', resolve ) );
+	const lock = await holdLock( id, 9 );
 	try {
-		await new Promise( ( resolve, reject ) => {
-			const timer = setTimeout( () => reject( new Error( 'The lock holder never reported LOCKED.' ) ), 30000 );
-			holder.stdout.on( 'data', ( chunk ) => {
-				if ( chunk.toString().includes( 'LOCKED' ) ) {
-					clearTimeout( timer );
-					resolve();
-				}
-			} );
-		} );
-
 		const blocked = await uploadPhoto( { id } );
 		assert.equal( blocked.status, 503 );
 		assert.equal( blocked.body.code, 'jot2press_busy' );
 
-		await released;
+		await lock.released;
 		const retried = await uploadPhoto( { id } );
 		assert.equal( retried.status, 201 );
 	} finally {
-		holder.kill();
+		lock.release();
 	}
 } );
 

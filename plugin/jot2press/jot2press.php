@@ -585,14 +585,32 @@ function jot2press_handle_entry( WP_REST_Request $request ) {
 		if ( $existing ) {
 			return jot2press_duplicate_response( $existing );
 		}
-		// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
-		// the photos are looked up and attached with nothing but this request's own code in between.
-		$attachments = jot2press_resolve_photos( $entry['photo_ids'] );
-		if ( is_wp_error( $attachments ) ) {
-			return $attachments;
+		// Each photo is locked while it is looked up, attached and shown, as the cleanup locks it to check and delete
+		// it: otherwise the cleanup could delete a photo this request has just found. Sorted, so that two entries
+		// sharing photos take their locks in the same order.
+		$photo_locks = jot2press_can_hold_locks() ? array_unique( $entry['photo_ids'] ) : array();
+		sort( $photo_locks );
+		$held = array();
+		try {
+			foreach ( $photo_locks as $photo_id ) {
+				if ( ! jot2press_lock( $photo_id ) ) {
+					return jot2press_error( 'jot2press_busy', 'A photo of this entry is being stored. Try again.', 503 );
+				}
+				$held[] = $photo_id;
+			}
+			// Resolved last, inside the lock: a stored entry answers 200 even if its photos were since deleted, and
+			// the photos are looked up and attached with nothing but this request's own code in between.
+			$attachments = jot2press_resolve_photos( $entry['photo_ids'] );
+			if ( is_wp_error( $attachments ) ) {
+				return $attachments;
+			}
+			$entry['attachments'] = $attachments;
+			$post_id              = jot2press_store_entry( $entry, $fallback );
+		} finally {
+			foreach ( $held as $photo_id ) {
+				jot2press_unlock( $photo_id );
+			}
 		}
-		$entry['attachments'] = $attachments;
-		$post_id              = jot2press_store_entry( $entry, $fallback );
 	} finally {
 		jot2press_unlock( $entry['day'] );
 	}
@@ -635,13 +653,25 @@ function jot2press_lock_name( string $name ): string {
 	return 'jot2press_' . md5( DB_NAME . $wpdb->prefix . $name );
 }
 
-/** Takes the database lock for a day or a photo id. Returns false if another request holds it for too long. */
-function jot2press_lock( string $name ): bool {
+/**
+ * Takes the database lock for a day or a photo id. Returns false if another request holds it for longer than
+ * `$seconds`.
+ */
+function jot2press_lock( string $name, int $seconds = JOT2PRESS_LOCK_SECONDS ): bool {
 	global $wpdb;
 	$taken = $wpdb->get_var(
-		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', jot2press_lock_name( $name ), JOT2PRESS_LOCK_SECONDS )
+		$wpdb->prepare( 'SELECT GET_LOCK(%s, %d)', jot2press_lock_name( $name ), $seconds )
 	);
 	return '1' === (string) $taken;
+}
+
+/**
+ * Whether one request can hold several locks at once. Before MySQL 5.7.5 (and in MariaDB 5.5), taking a lock lets go
+ * of the one held: an entry there keeps only its day's lock, and its photos go unlocked as they did before.
+ */
+function jot2press_can_hold_locks(): bool {
+	global $wpdb;
+	return version_compare( $wpdb->db_version(), '5.7.5', '>=' );
 }
 
 function jot2press_unlock( string $name ): void {
@@ -995,12 +1025,22 @@ function jot2press_cleanup_orphans(): void {
 		)
 	);
 	foreach ( $orphans as $attachment_id ) {
-		// Read again just before deleting: an entry may have attached or used the photo since the list was made.
-		clean_post_cache( $attachment_id );
-		$attachment = get_post( $attachment_id );
-		if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id ) ) {
+		// Left for a later run while an entry or an upload is busy with it: the lock is the photo's, and the entry
+		// holds it from looking the photo up until the post shows it.
+		$photo_id = (string) get_post_meta( $attachment_id, '_journal_photo_id', true );
+		if ( '' === $photo_id || ! jot2press_lock( $photo_id, 0 ) ) {
 			continue;
 		}
-		wp_delete_attachment( $attachment_id, true );
+		try {
+			// Read again just before deleting: an entry may have attached or used the photo since the list was made.
+			clean_post_cache( $attachment_id );
+			$attachment = get_post( $attachment_id );
+			if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id ) ) {
+				continue;
+			}
+			wp_delete_attachment( $attachment_id, true );
+		} finally {
+			jot2press_unlock( $photo_id );
+		}
 	}
 }
