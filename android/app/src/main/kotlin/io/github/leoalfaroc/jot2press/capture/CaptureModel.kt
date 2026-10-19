@@ -194,7 +194,10 @@ class CaptureModel(
             state.update {
                 // The editor was empty when this began: what it holds now was typed meanwhile, and stays, after the entry's text.
                 val typedMeanwhile = it.text.takeIf(String::isNotBlank).orEmpty()
-                it.copy(text = entry.text + typedMeanwhile, photos = (photos + it.photos).take(MAX_PHOTOS).also { kept -> overflow = it.photos.filterNot { p -> p in kept } }, revision = it.revision + 1, entryDay = entry.day)
+                // Photos added meanwhile follow the entry's, up to the limit; the ones past it are let go.
+                val kept = (photos + it.photos).take(MAX_PHOTOS)
+                overflow = it.photos.filterNot { photo -> photo in kept }
+                it.copy(text = entry.text + typedMeanwhile, photos = kept, revision = it.revision + 1, entryDay = entry.day)
             }
             queue.forget(overflow)
             // The pin takes the entry's state, which becomes the remembered one.
