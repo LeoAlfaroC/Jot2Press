@@ -48,3 +48,7 @@ test( 'the README heading carries the name in project.json', () => {
 	const readme = readFileSync( new URL( '../README.md', import.meta.url ), 'utf8' );
 	assert.ok( readme.startsWith( `# ${ pluginName }\n` ) );
 } );
+
+test( 'the plugin header turns off updates from WordPress.org, where another plugin could take the slug', () => {
+	assert.ok( readFileSync( pluginFile, 'utf8' ).includes( '\n * Update URI:        false\n' ) );
+} );

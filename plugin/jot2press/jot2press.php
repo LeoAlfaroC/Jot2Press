@@ -6,6 +6,7 @@
  * Requires at least: 7.1
  * Requires PHP:      7.4
  * License:           GPL-2.0-or-later
+ * Update URI:        false
  */
 
 defined( 'ABSPATH' ) || exit;
