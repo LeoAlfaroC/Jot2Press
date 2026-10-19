@@ -53,7 +53,15 @@ data class SettingsForm(
     val locationPermitted: Boolean = false,
     /** The last request was refused, and Android no longer shows its prompt. */
     val locationBlocked: Boolean = false,
-)
+) {
+    /** The sign-in fields filled by the model with [signIn], or emptied: they start again from these values. */
+    fun showing(signIn: Credentials?) = copy(
+        revision = revision + 1,
+        siteUrl = signIn?.siteUrl.orEmpty(),
+        username = signIn?.username.orEmpty(),
+        password = signIn?.password.orEmpty(),
+    )
+}
 
 data class SettingsUi(
     val form: SettingsForm,
@@ -102,14 +110,10 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
         stored = signIn
         val kept = settings.get()
         form.update {
-            it.copy(
-                revision = it.revision + 1,
+            it.showing(signIn).copy(
                 editing = signIn == null,
                 hasSaved = signIn != null,
                 unreadable = signIn == null && kept.configured,
-                siteUrl = signIn?.siteUrl.orEmpty(),
-                username = signIn?.username.orEmpty(),
-                password = signIn?.password.orEmpty(),
                 grace = kept.graceSeconds.toString(),
                 pattern = kept.titlePattern,
             )
@@ -125,14 +129,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
         val signIn = stored ?: return
         form.update {
             if (!it.editing || it.test == TestState.Running) return@update it
-            it.copy(
-                revision = it.revision + 1,
-                editing = false,
-                siteUrl = signIn.siteUrl,
-                username = signIn.username,
-                password = signIn.password,
-                test = TestState.Idle,
-            )
+            it.showing(signIn).copy(editing = false, test = TestState.Idle)
         }
     }
 
@@ -165,17 +162,7 @@ class SettingsModel(private val container: AppContainer, private val deviceLocal
         // Entries held by a rejected sign-in can go now.
         container.scheduler.sync()
         form.update {
-            it.copy(
-                revision = it.revision + 1,
-                editing = false,
-                hasSaved = true,
-                unreadable = false,
-                siteUrl = signIn.siteUrl,
-                username = signIn.username,
-                password = signIn.password,
-                test = TestState.Idle,
-                saved = true,
-            )
+            it.showing(signIn).copy(editing = false, hasSaved = true, unreadable = false, test = TestState.Idle, saved = true)
         }
     }
 
