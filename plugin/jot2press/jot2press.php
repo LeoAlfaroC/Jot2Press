@@ -35,11 +35,16 @@ const JOT2PRESS_REVISIONS = 30;
 // To change it, define this constant in wp-config.php.
 defined( 'JOT2PRESS_ORPHAN_DAYS' ) || define( 'JOT2PRESS_ORPHAN_DAYS', 30 );
 
+// The cleanup looks at this many photos at a time, and goes on to the next batch until it has run this many seconds;
+// what is left waits for a run a minute later, so that a long list never holds up the site's other scheduled tasks.
+const JOT2PRESS_CLEANUP_BATCH   = 100;
+const JOT2PRESS_CLEANUP_SECONDS = 20;
+
 register_activation_hook( __FILE__, 'jot2press_category' );
 add_action( 'rest_api_init', 'jot2press_register_routes' );
 register_deactivation_hook( __FILE__, 'jot2press_deactivate' );
 add_action( 'init', 'jot2press_schedule_cleanup' );
-add_action( 'jot2press_cleanup', 'jot2press_cleanup_orphans' );
+add_action( 'jot2press_cleanup', 'jot2press_cleanup_orphans', 10, 1 );
 add_filter( 'wp_revisions_to_keep', 'jot2press_revisions_to_keep', 10, 2 );
 
 function jot2press_error( string $code, string $message, int $status ): WP_Error {
@@ -934,13 +939,45 @@ function jot2press_deactivate(): void {
 }
 
 /**
+ * The ids of the photos that classic [gallery] shortcodes name, in any post but a revision: [gallery ids="1,2"], or
+ * include="1,2" as older posts wrote it. Null when the posts cannot be read.
+ *
+ * @return array<int, true>|null
+ */
+function jot2press_gallery_ids(): ?array {
+	global $wpdb;
+	$with_gallery = $wpdb->get_col( "SELECT post_content FROM {$wpdb->posts} WHERE post_type <> 'revision' AND post_content LIKE '%[gallery%'" );
+	if ( '' !== $wpdb->last_error ) {
+		return null;
+	}
+	$ids = array();
+	foreach ( $with_gallery as $content ) {
+		preg_match_all( '/\[gallery\b([^\]]*)\]/', $content, $galleries );
+		foreach ( $galleries[1] as $attributes ) {
+			$attributes = (array) shortcode_parse_atts( $attributes );
+			foreach ( array( 'ids', 'include' ) as $name ) {
+				if ( isset( $attributes[ $name ] ) ) {
+					$ids += array_fill_keys( wp_parse_id_list( $attributes[ $name ] ), true );
+				}
+			}
+		}
+	}
+	return $ids;
+}
+
+/**
  * Whether a journal photo is shown by a post (trashed ones included, they can be restored): its file appears in
  * a post's content, found by the random 32-hex name every size of the photo shares, or it is some post's
- * featured image, or a classic [gallery] shortcode names it by its id. Every doubt counts as shown, so that the
- * photo is kept: a name that cannot be read, a query that fails.
+ * featured image, or it is among `$gallery_ids`, the photos classic [gallery] shortcodes name. Every doubt counts as
+ * shown, so that the photo is kept: a name that cannot be read, a query that fails.
+ *
+ * @param array<int, true> $gallery_ids From jot2press_gallery_ids().
  */
-function jot2press_photo_is_shown( int $attachment_id ): bool {
+function jot2press_photo_is_shown( int $attachment_id, array $gallery_ids ): bool {
 	global $wpdb;
+	if ( isset( $gallery_ids[ $attachment_id ] ) ) {
+		return true;
+	}
 	$file = get_attached_file( $attachment_id );
 	if ( ! $file || ! preg_match( '/^[0-9a-f]{32}/', basename( $file ), $stem ) ) {
 		return true;
@@ -962,27 +999,7 @@ function jot2press_photo_is_shown( int $attachment_id ): bool {
 			(string) $attachment_id
 		)
 	);
-	if ( '' !== $wpdb->last_error || null !== $as_thumbnail ) {
-		return true;
-	}
-
-	// [gallery ids="1,2"], or include="1,2" as older posts wrote it.
-	$with_gallery = $wpdb->get_col( "SELECT post_content FROM {$wpdb->posts} WHERE post_type <> 'revision' AND post_content LIKE '%[gallery%'" );
-	if ( '' !== $wpdb->last_error ) {
-		return true;
-	}
-	foreach ( $with_gallery as $content ) {
-		preg_match_all( '/\[gallery\b([^\]]*)\]/', $content, $galleries );
-		foreach ( $galleries[1] as $attributes ) {
-			$attributes = (array) shortcode_parse_atts( $attributes );
-			foreach ( array( 'ids', 'include' ) as $name ) {
-				if ( isset( $attributes[ $name ] ) && in_array( $attachment_id, wp_parse_id_list( $attributes[ $name ] ), true ) ) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
+	return '' !== $wpdb->last_error || null !== $as_thumbnail;
 }
 
 /**
@@ -1003,44 +1020,76 @@ function jot2press_orphan_days( $value = JOT2PRESS_ORPHAN_DAYS ): int {
  * Deletes journal photos that no post shows and that are attached to no post, once they are older than
  * JOT2PRESS_ORPHAN_DAYS: uploads whose entry never arrived, and photos of a day's post that was
  * deleted permanently. Old and unattached only makes a photo a candidate; it is deleted only if no post shows it.
+ *
+ * @param mixed $after   The attachment id the run resumes after; cron passes it to a continuation, nothing otherwise.
+ * @param int   $batch   How many photos to look at a time.
+ * @param int   $seconds How long the run may go on before it leaves the rest to a run a minute later.
  */
-function jot2press_cleanup_orphans(): void {
+function jot2press_cleanup_orphans( $after = 0, int $batch = JOT2PRESS_CLEANUP_BATCH, int $seconds = JOT2PRESS_CLEANUP_SECONDS ): void {
+	global $wpdb;
 	$days = jot2press_orphan_days();
 	if ( ! $days ) {
 		return;
 	}
+	// Read once for the whole run, not once a photo: a site can have many gallery posts.
+	$gallery_ids = jot2press_gallery_ids();
+	if ( null === $gallery_ids ) {
+		return;
+	}
 
-	$orphans = get_posts(
-		array(
-			'post_type'     => 'attachment',
-			'post_status'   => array( 'private', 'inherit' ),
-			'post_parent'   => 0,
-			'meta_key'      => '_journal_photo_id',
-			'date_query'    => array(
-				array( 'before' => $days . ' days ago' ),
-			),
-			'numberposts'   => -1,
-			'fields'        => 'ids',
-			'cache_results' => false,
-		)
-	);
-	foreach ( $orphans as $attachment_id ) {
-		// Left for a later run while an entry or an upload is busy with it: the lock is the photo's, and the entry
-		// holds it from looking the photo up until the post shows it.
-		$photo_id = (string) get_post_meta( $attachment_id, '_journal_photo_id', true );
-		if ( '' === $photo_id || ! jot2press_lock( $photo_id, 0 ) ) {
-			continue;
+	$after   = (int) $after;
+	$cutoff  = gmdate( 'Y-m-d H:i:s', time() - $days * DAY_IN_SECONDS );
+	$started = time();
+	while ( true ) {
+		$orphans = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT p.ID FROM {$wpdb->posts} p INNER JOIN {$wpdb->postmeta} m ON m.post_id = p.ID AND m.meta_key = '_journal_photo_id'
+				WHERE p.post_type = 'attachment' AND p.post_status IN ('private', 'inherit') AND p.post_parent = 0
+				AND p.post_date_gmt < %s AND p.ID > %d ORDER BY p.ID LIMIT %d",
+				$cutoff,
+				$after,
+				$batch
+			)
+		);
+		if ( '' !== $wpdb->last_error ) {
+			return;
 		}
-		try {
-			// Read again just before deleting: an entry may have attached or used the photo since the list was made.
-			clean_post_cache( $attachment_id );
-			$attachment = get_post( $attachment_id );
-			if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id ) ) {
-				continue;
-			}
-			wp_delete_attachment( $attachment_id, true );
-		} finally {
-			jot2press_unlock( $photo_id );
+		foreach ( $orphans as $attachment_id ) {
+			jot2press_delete_orphan( (int) $attachment_id, $gallery_ids );
 		}
+		if ( count( $orphans ) < $batch ) {
+			return;
+		}
+		$after = (int) end( $orphans );
+		if ( time() - $started >= $seconds ) {
+			wp_schedule_single_event( time() + MINUTE_IN_SECONDS, 'jot2press_cleanup', array( $after ) );
+			return;
+		}
+	}
+}
+
+/**
+ * Deletes one candidate of the cleanup, unless an entry or an upload is busy with it, or it is attached or shown by
+ * the time it is read again.
+ *
+ * @param array<int, true> $gallery_ids From jot2press_gallery_ids().
+ */
+function jot2press_delete_orphan( int $attachment_id, array $gallery_ids ): void {
+	// Left for a later run while an entry or an upload is busy with it: the lock is the photo's, and the entry
+	// holds it from looking the photo up until the post shows it.
+	$photo_id = (string) get_post_meta( $attachment_id, '_journal_photo_id', true );
+	if ( '' === $photo_id || ! jot2press_lock( $photo_id, 0 ) ) {
+		return;
+	}
+	try {
+		// Read again just before deleting: an entry may have attached or used the photo since the list was made.
+		clean_post_cache( $attachment_id );
+		$attachment = get_post( $attachment_id );
+		if ( ! $attachment || 0 !== (int) $attachment->post_parent || jot2press_photo_is_shown( $attachment_id, $gallery_ids ) ) {
+			return;
+		}
+		wp_delete_attachment( $attachment_id, true );
+	} finally {
+		jot2press_unlock( $photo_id );
 	}
 }

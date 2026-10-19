@@ -218,3 +218,59 @@ test( 'the cleanup leaves a photo that an entry or an upload is busy with, and d
 	runCleanup();
 	assert.equal( await mediaStatus( photo.body.attachment_id ), 404 );
 } );
+
+/** Uploads `count` photos that the cleanup may delete: unattached, shown nowhere, from the year 2000. */
+async function orphans( count ) {
+	const photos = [];
+	for ( let i = 0; i < count; i++ ) {
+		const photo = await uploadPhoto();
+		backdate( photo.body.attachment_id );
+		photos.push( photo.body.attachment_id );
+	}
+	return photos;
+}
+
+/** The continuations of the cleanup waiting to run: when each is due and where it resumes. */
+function continuations() {
+	const output = wp(
+		'eval',
+		`$found = array(); foreach ( _get_cron_array() as $time => $hooks ) { foreach ( $hooks['jot2press_cleanup'] ?? array() as $event ) { if ( $event['args'] ) { $found[] = array( $time - time(), $event['args'] ); } } } echo 'RESULT:' . wp_json_encode( $found ) . ':END';`
+	);
+	return JSON.parse( output.match( /RESULT:(.*):END/s )[ 1 ] );
+}
+
+test( 'the cleanup goes through the photos a batch at a time', async () => {
+	const photos = await orphans( 5 );
+
+	wp( 'eval', 'jot2press_cleanup_orphans( 0, 2 );' );
+
+	for ( const id of photos ) {
+		assert.equal( await mediaStatus( id ), 404, String( id ) );
+	}
+	assert.deepEqual( continuations(), [] );
+} );
+
+test( 'a cleanup that runs out of time leaves the rest to a run a minute later', async () => {
+	const photos = await orphans( 3 );
+
+	// One photo a batch and no time at all: the run stops after its first batch.
+	wp( 'eval', 'jot2press_cleanup_orphans( 0, 1, 0 );' );
+
+	const waiting = continuations();
+	assert.equal( waiting.length, 1 );
+	assert.ok( waiting[ 0 ][ 0 ] > 0 && waiting[ 0 ][ 0 ] <= 60, String( waiting[ 0 ][ 0 ] ) );
+	const kept = [];
+	for ( const id of photos ) {
+		if ( ( await mediaStatus( id ) ) === 200 ) {
+			kept.push( id );
+		}
+	}
+	assert.ok( kept.length >= 2, kept.join() );
+
+	runCleanup();
+
+	for ( const id of photos ) {
+		assert.equal( await mediaStatus( id ), 404, String( id ) );
+	}
+	assert.deepEqual( continuations(), [] );
+} );
