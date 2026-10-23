@@ -9,3 +9,9 @@ android/app/build/
 android/local.properties
 android/.idea/
 *.iml
+
+# Release signing and build outputs
+*.jks
+*.keystore
+*.apk
+*.aab
