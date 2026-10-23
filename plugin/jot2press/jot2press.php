@@ -2,6 +2,8 @@
 /**
  * Plugin Name:       Jot2Press
  * Description:       Appends short journal entries to one post per day, private by default. Server side of the capture app for Android.
+ * Author:            Leo Alfaro
+ * Plugin URI:        https://github.com/LeoAlfaroC/Jot2Press
  * Version:           1.0.0
  * Requires at least: 7.1
  * Requires PHP:      7.4
