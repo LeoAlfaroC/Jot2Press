@@ -50,16 +50,6 @@ The name shown in the WordPress plugin list is `pluginName` in `project.json`, a
 
 Only the visible name changes. The folder `jot2press`, the address `jot2press/v1`, the uploads folder `journal` and the keys that mark the day posts and the photos stay as they are, which is why a rename loses nothing. The uploads folder and those keys carry the project's first name, journal, on purpose: the posts and photos already on a site are found by them.
 
-## Moving from the journal-entries plugin
-
-Before it was called Jot2Press, this plugin lived in the folder `journal-entries` and answered at `journal/v1`. The Jot2Press plugin installs beside it rather than over it, and the app talks only to the new one, so update the plugin and the app together:
-
-1. In the old app, wait until Settings → Queue says "Nothing is waiting to be sent."
-2. If `wp-config.php` defines `JOURNAL_ENTRIES_CATEGORY_SLUG` or `JOURNAL_ENTRIES_ORPHAN_DAYS`, rename them to `JOT2PRESS_CATEGORY_SLUG` and `JOT2PRESS_ORPHAN_DAYS`. The old names are no longer read, and the defaults (`journal`, 30 days) would apply without a warning.
-3. Upload `jot2press.zip` and activate it.
-4. Deactivate and delete the old plugin, the one in the folder `journal-entries`; it shows the same name in the list. Deleting it removes only its files: the day posts, their photos and the category stay, and the new plugin keeps appending to them.
-5. Install the new app, as the Android README describes under "Moving from the journal build".
-
 ## Upload limits
 
 If photos are rejected as too large, raise the limits on the server. PHP: `upload_max_filesize` and `post_max_size`. nginx: `client_max_body_size` (its default is 1 MB).

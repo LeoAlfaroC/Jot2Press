@@ -77,15 +77,6 @@ Until credentials are saved, the widget's write button opens settings. Once save
 
 The name on the launcher and in the list of widgets, and the name TalkBack reads for the logo at the top of settings, is `appName` in `project.json` at the repository root. The logo itself is a drawing and keeps reading Jot2Press. Change it there, then build and install again. The queue, the draft and the settings stay, because Android recognises the app by its id, `io.github.leoalfaroc.jot2press`, which never changes.
 
-## Moving from the journal build
-
-Builds made before the name Jot2Press had the id `io.github.leoalfaroc.journal`. Android treats the new id as a different app, which installs beside the old one with nothing in it, and the new app talks only to the Jot2Press plugin. Update the plugin at the same time, as the plugin README describes under "Moving from the journal-entries plugin", and on the phone:
-
-1. In the old app, wait until Settings → Queue says "Nothing is waiting to be sent.", and note your settings.
-2. Uninstall the old app and install the new one.
-3. Enter the site, the user and the application password again (the same password works) and press Test connection.
-4. Set your settings again, allow location again if Attach location is on, and add the widget again.
-
 ## Tests
 
 ```bash
